@@ -1,19 +1,38 @@
-contract owned {
+contract mintable {
     address public centralBank;
 
-    function owned() {
+    function mintable() {
         centralBank = msg.sender;
     }
 
-    modifier onlyOwner {
+    modifier onlyMinter {
         if (msg.sender != centralBank) throw;
         _
     }
 
-    function transferOwnership(address newOwner) 
-        onlyOwner
+    function transferMinter(address newMinter) 
+        onlyMinter
     {
-        centralBank = newOwner;
+        centralBank = newMinter;
+    }
+}
+
+contract policable {
+    address public lawEnforcement;
+
+    function policable() {
+        lawEnforcement = msg.sender;
+    }
+
+    modifier onlyLawEnforcement {
+        if (msg.sender != lawEnforcement) throw;
+        _
+    }
+
+    function transferLawEnforcement(address newLawEnforcement) 
+        onlyLawEnforcement
+    {
+        lawEnforcement = newLawEnforcement;
     }
 }
 
@@ -21,7 +40,7 @@ contract owned {
 
 contract basicToken {
     /* Public variables of the token */
-    string public standard = 'Token 0.1';
+    string public standard = 'Token 0.2';
     string public name;
     string public symbol;
     uint8 public decimals;
@@ -88,7 +107,7 @@ contract basicToken {
     }
 }
 
-contract CryptoEur01 is owned, basicToken {
+contract CryptoEur02 is mintable, policable, basicToken {
 
     uint256 public totalSupply;
 
@@ -98,14 +117,16 @@ contract CryptoEur01 is owned, basicToken {
     event ApprovedAccount(address target, bool approved);
 
     /* Initializes contract with initial supply tokens to the creator of the contract */
-    function CryptoEur01(
+    function CryptoEur02(
         uint256 initialSupply,
         string tokenName,
         uint8 decimalUnits,
         string tokenSymbol,
-        address centralMinter
+        address centralMinter,
+        address lawEnforcement
     ) {
         if(centralMinter != 0 ) centralBank = msg.sender;         // Sets the minter
+        if(lawEnforcement != 0 ) lawEnforcement = msg.sender;         // Sets the minter
         balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
         name = tokenName;                                   // Set the name for display purposes
         symbol = tokenSymbol;                               // Set the symbol for display purposes
@@ -113,7 +134,7 @@ contract CryptoEur01 is owned, basicToken {
         totalSupply = initialSupply;
     }
 
-    /* Send Kristo-Euros */
+    /* Send crypto Euros */
     function transfer(address _to, uint256 _value) {
         if (balanceOf[msg.sender] < _value) throw;           // Check if the sender has enough
         if (balanceOf[_to] + _value < balanceOf[_to]) throw; // Check for overflows
@@ -140,7 +161,7 @@ contract CryptoEur01 is owned, basicToken {
     */
 
     function mintToken(address target, uint256 mintedAmount)
-        onlyOwner
+        onlyMinter
     {
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
@@ -149,7 +170,7 @@ contract CryptoEur01 is owned, basicToken {
     }
 
     function approveAccount(address target, bool approve)
-        onlyOwner
+        onlyLawEnforcement
     {
         approvedAccount[target] = approve;
         ApprovedAccount(target, approve);
