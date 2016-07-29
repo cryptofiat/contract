@@ -125,7 +125,7 @@ contract CryptoEur02 is mintable, policable, basicToken {
         address _centralMinter,
         address _lawEnforcement
     ) {
-        if(_centralMinter != 0 ) centralBank = _centralBank;         // Sets the minter
+        if(_centralMinter != 0 ) centralBank = _centralMinter;         // Sets the minter
         if(_lawEnforcement != 0 ) lawEnforcement = _lawEnforcement;  // Sets the law enforcer if set in arg
         balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
         name = tokenName;                                   // Set the name for display purposes
