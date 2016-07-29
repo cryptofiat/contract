@@ -38,22 +38,21 @@ contract policable {
 
 contract CryptoEur02 is mintable, policable {
 
-    /* Public variables of the contract */
-	string public standard = 'Token 0.2';
+	/* Data of the contract */
+	string public standard = 'CryptoEUR 0.2';
 	string public name;
 	string public symbol;
 	uint8 public decimals;
 
 	/* This creates an array with all balances */
+	mapping (address => bool) public approvedAccount;
 	mapping (address => uint256) public balanceOf;
 	mapping (address => mapping (address => uint256)) public allowance;
 
-	/* This generates a public event on the blockchain that will notify clients */
-	event Transfer(address indexed from, address indexed to, uint256 value);
+	uint256 public totalSupply;
 
-    uint256 public totalSupply;
-
-    mapping (address => bool) public approvedAccount;
+    /* This generates a public event on the blockchain that will notify clients */
+    event Transfer(address indexed from, address indexed to, uint256 value);
 
     /* This generates a public event on the blockchain that will notify clients */
     event ApprovedAccount(address target, bool approved);
@@ -147,5 +146,25 @@ contract CryptoEur02 is mintable, policable {
 	/* This unnamed function is called whenever someone tries to send ether to it */
 	function () {
 		throw;     // Prevents accidental sending of ether
+	}
+}
+
+contract CryptoEurBase {
+
+	address public currentVersion;
+    address public owner;
+
+	function CryptoEurBase(address initialAddress){
+		currentVersion = initialAddress;
+		owner = msg.sender;
+	}
+
+	function update(address newAddress){
+		if(msg.sender != owner) throw;
+		currentVersion = newAddress;
+	}
+
+	function(){
+		if(!currentVersion.delegatecall(msg.data)) throw;
 	}
 }
