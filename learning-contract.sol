@@ -90,8 +90,6 @@ contract basicToken {
 
 contract CryptoEur01 is owned, basicToken {
 
-    //uint256 public sellPrice;
-    //uint256 public buyPrice;
     uint256 public totalSupply;
 
     mapping (address => bool) public approvedAccount;
@@ -157,11 +155,6 @@ contract CryptoEur01 is owned, basicToken {
         ApprovedAccount(target, approve);
     }
 
-    /*
-    function setPrices(uint256 newSellPrice, uint256 newBuyPrice) onlyOwner {
-        sellPrice = newSellPrice;
-        buyPrice = newBuyPrice;
-    }
 
     function buy() {
         uint amount = msg.value / buyPrice;                // calculates the amount
