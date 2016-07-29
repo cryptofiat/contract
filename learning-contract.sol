@@ -154,22 +154,4 @@ contract CryptoEur01 is owned, basicToken {
         approvedAccount[target] = approve;
         ApprovedAccount(target, approve);
     }
-
-
-    function buy() {
-        uint amount = msg.value / buyPrice;                // calculates the amount
-        if (balanceOf[this] < amount) throw;               // checks if it has enough to sell
-        balanceOf[msg.sender] += amount;                   // adds the amount to buyer's balance
-        balanceOf[this] -= amount;                         // subtracts amount from seller's balance
-        Transfer(this, msg.sender, amount);                // execute an event reflecting the change
-    }
-
-    function sell(uint256 amount) {
-        if (balanceOf[msg.sender] < amount ) throw;        // checks if the sender has enough to sell
-        balanceOf[this] += amount;                         // adds the amount to owner's balance
-        balanceOf[msg.sender] -= amount;                   // subtracts the amount from seller's balance
-        msg.sender.send(amount * sellPrice);               // sends ether to the seller
-        Transfer(msg.sender, this, amount);                // executes an event reflecting on the change
-    }
-    */
 }
