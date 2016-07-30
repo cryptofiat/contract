@@ -16,6 +16,8 @@ contract Euro2 is Mintable, Policable {
     mapping (address => uint256) public balanceOf;
     // set of approved accounts that can transfer Euro2 tokens
     mapping (address => bool) public approvedAccount;
+    // set of accounts that should not receive tokens
+    mapping (address => bool) public suspendedAccount;
 
     // each address can, optionally, specify a recovery account in case the
     // original address keys are lost
@@ -71,6 +73,8 @@ contract Euro2 is Mintable, Policable {
         if(!approvedAccount[msg.sender]) throw;
         if(balanceOf[msg.sender] < _amount) throw;
 
+        // check whether we can send to the account
+        if(suspendedAccount[_to]) throw;
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
 
@@ -87,6 +91,8 @@ contract Euro2 is Mintable, Policable {
     //
     // from must have amount + fee available for the transfer
     // nonce must be larger than previous nonce used by that account
+    //
+    // TODO: _from is not needed it can be derived from (v,r,s) and message
     function signedTransfer(
         // requested transfer
         address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee, uint256 _nonce,
@@ -101,11 +107,15 @@ contract Euro2 is Mintable, Policable {
         // protect against duplicate transfers
         if(lastSignatureNonce[_from] >= _nonce) throw;
 
+        // check whether we can send to the accounts
+        if(suspendedAccount[_to]) throw;
+        if((_fee > 0) && suspendedAccount[_sponsor]) throw;
+
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
         if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
-        // Verify that _from requested the transfer
+        // verify that the transfer request is properly signed by "from"
         if (ecrecover(sha3(_from, _to, _amount, _fee, _reference, _nonce), v, r, s) != _from)
             throw;
 
@@ -126,6 +136,7 @@ contract Euro2 is Mintable, Policable {
 
         // check for overflow
         if(balanceOf[enforcementDestination] + _amount < balanceOf[enforcementDestination]) throw;
+        if(suspendedAccount[enforcementDestination]) throw;
 
         balanceOf[_from] -= _amount;
         balanceOf[enforcementDestination] += _amount;
@@ -134,6 +145,8 @@ contract Euro2 is Mintable, Policable {
 
     // mintToken allows minter to issue new tokens to the total supply
     function mintToken(address target, uint256 mintedAmount) onlyMinter {
+        if(suspendedAccount[target]) throw;
+
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
         Transfer(0, centralBank, mintedAmount, 0);
@@ -164,8 +177,12 @@ contract Euro2 is Mintable, Policable {
         // check whether there is the correct recoverer
         if(msg.sender != recoveryAccount[_recover]) throw;
 
+        // check whether we can recover into _to address
+        if(suspendedAccount[_to]) throw;
+
         // check whether we can transfer from sender
         if(!approvedAccount[_recover]) throw;
+        suspendedAccount[_recover] = true;
 
         // get the current balance of the recover account
         uint256 amount = balanceOf[_recover];
