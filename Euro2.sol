@@ -22,7 +22,7 @@ contract Euro2 is Mintable, Policable {
     event ApprovedAccount(address target, bool approved);
 
     /* Initializes contract with initial supply tokens to the creator of the contract */
-    function CryptoEur02(
+    function Euro2(
         uint256 initialSupply,
         string tokenName,
         uint8 decimalUnits,

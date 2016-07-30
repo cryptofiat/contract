@@ -35,6 +35,7 @@ var contracts = {};
 
 {
 	try {
+		// fs.rmdirSync(".bin");
 		fs.mkdirSync(".bin", 0o755);
 	} catch (ignore) {};
 
@@ -42,8 +43,28 @@ var contracts = {};
 	for (var name in compiled.contracts) {
 		console.log("\t" + name);
 		var contract = compiled.contracts[name];
-		fs.writeFileSync(".bin/" + name + ".bin", contract.bin);
-		fs.writeFileSync(".bin/" + name + ".abi", contract.abi);
+
+		var buffer = Buffer.from(contract.bytecode, "hex");
+		fs.writeFileSync(".bin/" + name + ".bin", buffer);
+		fs.writeFileSync(".bin/" + name + ".abi", contract.interface);
+
+		var log = "Gas estimates:\n";
+
+		var estimates = contract.gasEstimates;
+		log += "\tcreation: " + estimates.creation + "\n";
+		log += "\tinternal:\n";
+		for (var fn in estimates.internal) {
+			var est = estimates.internal[fn];
+			log += "\t\t" + fn + ": " + (est || "delegated") + "\n";
+		};
+
+		log += "\texternal:\n";
+		for (var fn in estimates.external) {
+			var est = estimates.external[fn];
+			log += "\t\t" + fn + ": " + (est || "delegated") + "\n";
+		};
+
+		fs.writeFileSync(".bin/" + name + ".log", log);
 	}
 }
 
