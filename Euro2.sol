@@ -65,21 +65,40 @@ contract Euro2 is Mintable, Policable {
     */
 
     /* Execute transfers signed by sender */
-    function executeSignedTransfer(address _from, address _to, address _sponsor, uint256 _value, uint256 _fee, uint8 v, bytes32 r, bytes32 s) {
+    function executeSignedTransfer(
+        // requested transfer
+        address _from, address _to, uint256 _value, uint256 _reference, uint256 _fee,
+        // where to transfer the transaction fee
+        address _sponsor,
+        // transfer signature
+        uint8 v, bytes32 r, bytes32 s)
+    {
+        // Check if the sender has enough funds
+        if (balanceOf[_from] < _value + _fee) throw;
 
-        if (ecrecover(sha3(_from, _to, _sponsor, _value, _fee), v, r, s) != _from) throw;  // Check if sender has signed the hash corresponding to this data
-        if (balanceOf[_from] < _value + _fee) throw;          		     // Check if the sender has enough funds
-        if (balanceOf[_to] + _value + _fee < balanceOf[_to]) throw;      // Check for overflows
-        if (!approvedAccount[_from]) throw;                              // Check if frozen
+        // Check for overflows
+        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
+        if (balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
-        balanceOf[_from] -= _value;                                      // Subtract from the sender
-        balanceOf[_to] += _value;                                        // Add the same to the recipient
-        Transfer(msg.sender, _to, _value);                               // Notify anyone listening that this transfer took place
+        // Check whether the accounts can transact
+        if (!approvedAccount[_from]) throw;
+        // if (!approvedAccount[_to]) throw;
+        // if (!approvedAccount[_sponsor]) throw;
 
-		if (fee > 0) {
-			balanceOf[_from] -= _fee;                                    // Subtract fee from the sender
-			balanceOf[_sponsor] += _fee;                                 // Add the same to the sponsor
-	        Transfer(_from, _sponsor, _fee);                             // Notify anyone listening that this transfer took place
+        // Verify that _from requested the transfer
+        if (ecrecover(sha3(_from, _to, _value, _fee, _reference), v, r, s) != _from) throw;
+
+        // Update _from, _to balance
+        balanceOf[_from] -= _value;
+        balanceOf[_to] += _value;
+        Transfer(_from, _to, _value, _reference);
+
+        // If _sponsor was offered a fee
+		if (_fee > 0) {
+            // Update _from, _to balance
+			balanceOf[_from] -= _fee;
+			balanceOf[_sponsor] += _fee;
+	        Transfer(_from, _sponsor, _fee, 0);
 		}
     }
 
