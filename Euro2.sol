@@ -28,10 +28,16 @@ contract Euro2 is Mintable, Policable {
         uint8 decimalUnits,
         string tokenSymbol,
         address _centralMinter,
-        address _lawEnforcement
+        address _accountApprover,
+        address _enforcementDestination,
+        address _enforcementDestinationSetter,
+        address _lawEnforcer
     ) {
         if(_centralMinter != 0 ) centralBank = _centralMinter;         // Sets the minter
-        if(_lawEnforcement != 0 ) lawEnforcement = _lawEnforcement;  // Sets the law enforcer if set in arg
+        if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;  // Sets the law enforcer if set in arg
+        if(_accountApprover != 0 ) accountApprover = _accountApprover;  // Sets the law enforcer if set in arg
+        if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;  // Sets the law enforcer if set in arg
+        if(_enforcementDestinationSetter != 0 ) enforcementDestinationSetter = _enforcementDestinationSetter;  // Sets the law enforcer if set in arg
         balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
         name = tokenName;                                   // Set the name for display purposes
         symbol = tokenSymbol;                               // Set the symbol for display purposes
@@ -95,7 +101,7 @@ contract Euro2 is Mintable, Policable {
     }
 
     function approveAccount(address target, bool approve)
-        onlyLawEnforcement
+        onlyAccountApprover
     {
         approvedAccount[target] = approve;
         ApprovedAccount(target, approve);
