@@ -49,7 +49,6 @@ contract Euro2 is Mintable, Policable {
         Transfer(msg.sender, _to, _value);                   // Notify anyone listening that this transfer took place
     }
 
-
     /* A contract attempts to get the coins */
     /*
     function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
@@ -64,6 +63,26 @@ contract Euro2 is Mintable, Policable {
         return true;
     }
     */
+
+    /* Execute transfers signed by sender */
+    function executeSignedTransfer(address _from, address _to, address _sponsor, uint256 _value, uint256 _fee, uint8 v, bytes32 r, bytes32 s) {
+
+        if (ecrecover(sha3(_from, _to, _sponsor, _value, _fee), v, r, s) != _from) throw;  // Check if sender has signed the hash corresponding to this data
+        if (balanceOf[_from] < _value + _fee) throw;          		     // Check if the sender has enough funds
+        if (balanceOf[_to] + _value + _fee < balanceOf[_to]) throw;      // Check for overflows
+        if (!approvedAccount[_from]) throw;                              // Check if frozen
+
+        balanceOf[_from] -= _value;                                      // Subtract from the sender
+        balanceOf[_to] += _value;                                        // Add the same to the recipient
+        Transfer(msg.sender, _to, _value);                               // Notify anyone listening that this transfer took place
+
+		if (fee > 0) {
+			balanceOf[_from] -= _fee;                                    // Subtract fee from the sender
+			balanceOf[_sponsor] += _fee;                                 // Add the same to the sponsor
+	        Transfer(_from, _sponsor, _fee);                             // Notify anyone listening that this transfer took place
+		}
+    }
+
 
     function mintToken(address target, uint256 mintedAmount)
         onlyMinter
