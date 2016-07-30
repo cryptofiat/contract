@@ -1,3 +1,4 @@
+// Mintable allows an account to be responsible for minting.
 contract Mintable {
     address public centralBank;
 

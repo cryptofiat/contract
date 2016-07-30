@@ -1,6 +1,8 @@
 import "./Mintable.sol";
 import "./Policable.sol";
 
+// Euro2 implements crypto-currency that can be recovered and requires
+// central approval.
 contract Euro2 is Mintable, Policable {
     /* Data of the contract */
     string public standard = 'CryptoEUR 0.2';
@@ -8,21 +10,30 @@ contract Euro2 is Mintable, Policable {
     string public symbol;
     uint8  public decimals;
 
-    /* This creates an array with all balances */
-    mapping (address => bool) public approvedAccount;
-    mapping (address => address) public recoveryAccount;
+    // tracking total balance
+    uint256 public totalSupply;
+    // tracks balance of a particular account
     mapping (address => uint256) public balanceOf;
+    // set of approved accounts that can transfer Euro2 tokens
+    mapping (address => bool) public approvedAccount;
+
+    // each address can, optionally, specify a recovery account in case the
+    // original address keys are lost
+    mapping (address => address) public recoveryAccount;
+
+    // when using signed transfer it is required to protect against replays of
+    // transfer requests. the nonces used, must be increasing
+    // e.g. use lastSignatureNonce[sender]++ as the nonce
     mapping (address => uint256) public lastSignatureNonce;
 
-    uint256 public totalSupply;
-
-    /* This generates a public event on the blockchain that will notify clients */
+    // Transfer notifies about transfer of tokens
     event Transfer(address indexed from, address indexed to, uint256 value, uint256 reference);
 
-    /* This generates a public event on the blockchain that will notify clients */
-    event ApprovedAccount(address target, bool approved);
+    // AccountApproved notifies that account has been granted or revoked the right
+    // to transfer tokens
+    event AccountApproved(address account, bool approved);
 
-    /* Initializes contract with initial supply tokens to the creator of the contract */
+    // Initializes Euro2 crypto currency with the appropriate initial institutions
     function Euro2(
         uint256 initialSupply,
         string tokenName,
@@ -34,18 +45,27 @@ contract Euro2 is Mintable, Policable {
         address _enforcementDestinationSetter,
         address _lawEnforcer
     ) {
-        if(_centralMinter != 0 ) centralBank = _centralMinter;         // Sets the minter
-        if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;  // Sets the law enforcer if set in arg
-        if(_accountApprover != 0 ) accountApprover = _accountApprover;  // Sets the law enforcer if set in arg
-        if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;  // Sets the law enforcer if set in arg
-        if(_enforcementDestinationSetter != 0 ) enforcementDestinationSetter = _enforcementDestinationSetter;  // Sets the law enforcer if set in arg
-        balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
-        name = tokenName;                                   // Set the name for display purposes
-        symbol = tokenSymbol;                               // Set the symbol for display purposes
-        decimals = decimalUnits;                            // Amount of decimals for display purposes
+        // reassign minter, if specified
+        if(_centralMinter != 0) centralBank = _centralMinter;
+
+        // reassign law enforcment, if specified
+        if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;
+        if(_accountApprover != 0 ) accountApprover = _accountApprover;
+        if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;
+        if(_enforcementDestinationSetter != 0 ) enforcementDestinationSetter = _enforcementDestinationSetter;
+
+        // starting balance
+        balanceOf[msg.sender] = initialSupply;
         totalSupply = initialSupply;
+
+        // display information for currency
+        name = tokenName;
+        symbol = tokenSymbol;
+        decimals = decimalUnits;
     }
 
+    // transfer transfers tokens from msg.sender to _to
+    // msg.sender must be approved and have sufficient funds
     function transfer(address _to, uint256 _amount, uint256 _reference){
         // check whether we can transfer from sender
         if(!approvedAccount[msg.sender]) throw;
@@ -59,7 +79,14 @@ contract Euro2 is Mintable, Policable {
         Transfer(msg.sender, _to, _amount, _reference);
     }
 
-    /* Execute transfers signed by sender */
+    // signedTransfer transfers tokens on behalf of _from,
+    // where _sponser is paid _fee for services
+    //
+    // (v,r,s) is signature of (from, to, amount, reference, fee, nonce)
+    // signed by _from account.
+    //
+    // from must have amount + fee available for the transfer
+    // nonce must be larger than previous nonce used by that account
     function signedTransfer(
         // requested transfer
         address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee, uint256 _nonce,
@@ -93,7 +120,7 @@ contract Euro2 is Mintable, Policable {
         }
     }
 
-    // lawEnforcer can withdraw to a dedicated account
+    // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
     function enforcedWithdraw(address _from, uint256 _amount, uint256 _reference) onlyLawEnforcer {
         if(balanceOf[_from] < _amount) throw;
 
@@ -105,23 +132,24 @@ contract Euro2 is Mintable, Policable {
         Transfer(_from, enforcementDestination, _amount, _reference);
     }
 
-
-    function mintToken(address target, uint256 mintedAmount)
-        onlyMinter
-    {
+    // mintToken allows minter to issue new tokens to the total supply
+    function mintToken(address target, uint256 mintedAmount) onlyMinter {
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
         Transfer(0, centralBank, mintedAmount, 0);
         Transfer(centralBank, target, mintedAmount, 0);
     }
 
-    function approveAccount(address target, bool approve)
-        onlyAccountApprover
-    {
+    // approveAccount changes target approval status
+    function approveAccount(address target, bool approve) onlyAccountApprover {
         approvedAccount[target] = approve;
-        ApprovedAccount(target, approve);
+        AccountApproved(target, approve);
     }
 
+    // assignRecoveryAccount allows an account owner to specify a
+    // trusted party that can retransfer all money to a backup/new account
+    //
+    // if the specified account is 0, the recovery account will be removed
     function assignRecoveryAccount(address _trusted){
         if(_trusted == 0) {
             delete recoveryAccount[msg.sender];
@@ -130,6 +158,8 @@ contract Euro2 is Mintable, Policable {
         }
     }
 
+    // recoverAccount allows a trusted party to retransfer all money from
+    // a lost account to a new or another account
     function recoverAccount(address _recover, address _to){
         // check whether there is the correct recoverer
         if(msg.sender != recoveryAccount[_recover]) throw;
@@ -137,18 +167,16 @@ contract Euro2 is Mintable, Policable {
         // check whether we can transfer from sender
         if(!approvedAccount[_recover]) throw;
 
+        // get the current balance of the recover account
         uint256 amount = balanceOf[_recover];
 
         // check for overflow
         if(balanceOf[_to] + amount < balanceOf[_to]) throw;
 
+        // move the tokens around
+        balanceOf[_recover] = 0;
         balanceOf[_to] += amount;
         Transfer(_recover, _to, amount, 0);
-
-        // tear down the unusable account
-        delete balanceOf[_recover];
-        delete recoveryAccount[_recover];
-        delete approvedAccount[_recover];
     }
 
     /* This unnamed function is called whenever someone tries to send ether to it */

@@ -1,8 +1,9 @@
+// Policable implements law enforcement institutions
 contract Policable {
     address public lawEnforcer; // account or multisig contract
     address public accountApprover; // account or multisig contract
     address public enforcementDestinationSetter; // people, who can reconfigure the destination account
-    address public enforcementDestination; // Account where lawEnforcers can pull money to - e.g. some 
+    address public enforcementDestination; // Account where lawEnforcers can pull money to - e.g. some
 
     function Policable() {
         lawEnforcer = msg.sender;
