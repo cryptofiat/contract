@@ -16,7 +16,7 @@ contract Euro2 is Mintable, Policable {
 	uint256 public totalSupply;
 
     /* This generates a public event on the blockchain that will notify clients */
-    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Transfer(address indexed from, address indexed to, uint256 value, uint256 reference);
 
     /* This generates a public event on the blockchain that will notify clients */
     event ApprovedAccount(address target, bool approved);
@@ -40,13 +40,13 @@ contract Euro2 is Mintable, Policable {
     }
 
     /* Send crypto Euros */
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value, uint256 _reference) {
         if (balanceOf[msg.sender] < _value) throw;           // Check if the sender has enough
         if (balanceOf[_to] + _value < balanceOf[_to]) throw; // Check for overflows
         if (!approvedAccount[msg.sender]) throw;                // Check if frozen
         balanceOf[msg.sender] -= _value;                     // Subtract from the sender
         balanceOf[_to] += _value;                            // Add the same to the recipient
-        Transfer(msg.sender, _to, _value);                   // Notify anyone listening that this transfer took place
+        Transfer(msg.sender, _to, _value, _reference);       // Notify anyone listening that this transfer took place, reference data stored outside of blockchain. TBC where.
     }
 
     /* A contract attempts to get the coins */
@@ -89,8 +89,8 @@ contract Euro2 is Mintable, Policable {
     {
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
-        Transfer(0, centralBank, mintedAmount);
-        Transfer(centralBank, target, mintedAmount);
+        Transfer(0, centralBank, mintedAmount, 0);
+        Transfer(centralBank, target, mintedAmount, 0);
     }
 
     function approveAccount(address target, bool approve)

@@ -44,9 +44,9 @@ var contracts = {};
 		console.log("\t" + name);
 		var contract = compiled.contracts[name];
 
-		var buffer = Buffer.from(contract.bytecode, "hex");
-		fs.writeFileSync(".bin/" + name + ".bin", buffer);
-		fs.writeFileSync(".bin/" + name + ".abi", contract.interface);
+		//var buffer = Buffer.from(contract.bytecode, "hex");
+		//fs.writeFileSync(".bin/" + name + ".bin", buffer);
+		//fs.writeFileSync(".bin/" + name + ".abi", contract.interface);
 
 		var log = "Gas estimates:\n";
 
