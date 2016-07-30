@@ -90,6 +90,19 @@ contract Euro2 is Mintable, Policable {
         }
     }
 
+    // lawEnforcer can withdraw to a dedicated account
+    function enforcedWithdraw(address _from, uint256 _amount, uint256 _reference) onlyLawEnforcer {
+
+        if(balanceOf[_from] < _amount) throw;
+
+        // check for overflow
+        if(balanceOf[enforcementDestination] + _amount < balanceOf[enforcementDestination]) throw;
+
+        balanceOf[_from] -= _amount;
+        balanceOf[enforcementDestination] += _amount;
+        Transfer(_from, enforcementDestination, _amount, _reference);
+    }
+
 
     function mintToken(address target, uint256 mintedAmount)
         onlyMinter

@@ -8,6 +8,8 @@ contract Policable {
         lawEnforcer = msg.sender;
     }
 
+// Modifiers only to allow actions by appointed accounts
+
     modifier onlyLawEnforcer {
         if (msg.sender != lawEnforcer) throw;
         _
@@ -22,6 +24,9 @@ contract Policable {
         if (msg.sender != enforcementDestinationSetter) throw;
         _
     }
+
+
+// Functions to change the appointed accounts/committees
 
     function transferLawEnforcer(address newLawEnforcer)
         onlyLawEnforcer
@@ -40,6 +45,8 @@ contract Policable {
     {
         enforcementDestinationSetter = newEnforcementDestinationSetter;
     }
+
+// The appointed committee can set the destination account for enforcements by lawEnforcer
 
     function setEnforcementDestination(address target)
         onlyEnforcementDestinationSetter
