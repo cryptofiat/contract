@@ -12,7 +12,6 @@ contract Euro2 is Mintable, Policable {
     mapping (address => bool) public approvedAccount;
     mapping (address => address) public recoveryAccount;
     mapping (address => uint256) public balanceOf;
-    mapping (address => mapping (address => uint256)) public allowance;
 
     uint256 public totalSupply;
 
@@ -130,31 +129,6 @@ contract Euro2 is Mintable, Policable {
         delete recoveryAccount[_recover];
         delete approvedAccount[_recover];
     }
-
-    /* Allow another contract to spend some tokens in your behalf */
-    /*
-    function approveAndCall(address _spender, uint256 _value, bytes _extraData)
-        returns (bool success) {
-        allowance[msg.sender][_spender] = _value;
-        tokenRecipient spender = tokenRecipient(_spender);
-        spender.receiveApproval(msg.sender, _value, this, _extraData);
-        return true;
-    }
-    */
-
-    /* A contract attempts to get the coins */
-    /*
-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
-        if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
-        if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
-        balanceOf[_from] -= _value;                          // Subtract from the sender
-        balanceOf[_to] += _value;                            // Add the same to the recipient
-        allowance[_from][msg.sender] -= _value;
-        Transfer(_from, _to, _value);
-        return true;
-    }
-    */
 
     /* This unnamed function is called whenever someone tries to send ether to it */
     function () {
