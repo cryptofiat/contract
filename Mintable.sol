@@ -6,7 +6,7 @@ contract Mintable {
     }
 
     modifier onlyMinter {
-        if (msg.sender ! centralBank) throw;
+        if (msg.sender != centralBank) throw;
         _
     }
 
