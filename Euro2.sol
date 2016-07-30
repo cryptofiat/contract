@@ -2,18 +2,19 @@ import "./Mintable.sol";
 import "./Policable.sol";
 
 contract Euro2 is Mintable, Policable {
-	/* Data of the contract */
-	string public standard = 'CryptoEUR 0.2';
-	string public name;
-	string public symbol;
-	uint8 public decimals;
+    /* Data of the contract */
+    string public standard = 'CryptoEUR 0.2';
+    string public name;
+    string public symbol;
+    uint8  public decimals;
 
-	/* This creates an array with all balances */
-	mapping (address => bool) public approvedAccount;
-	mapping (address => uint256) public balanceOf;
-	mapping (address => mapping (address => uint256)) public allowance;
+    /* This creates an array with all balances */
+    mapping (address => bool) public approvedAccount;
+    mapping (address => address) public recoveryAccount;
+    mapping (address => uint256) public balanceOf;
+    mapping (address => mapping (address => uint256)) public allowance;
 
-	uint256 public totalSupply;
+    uint256 public totalSupply;
 
     /* This generates a public event on the blockchain that will notify clients */
     event Transfer(address indexed from, address indexed to, uint256 value, uint256 reference);
@@ -39,67 +40,49 @@ contract Euro2 is Mintable, Policable {
         totalSupply = initialSupply;
     }
 
-    /* Send crypto Euros */
-    function transfer(address _to, uint256 _value, uint256 _reference) {
-        if (balanceOf[msg.sender] < _value) throw;           // Check if the sender has enough
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw; // Check for overflows
-        if (!approvedAccount[msg.sender]) throw;                // Check if frozen
-        balanceOf[msg.sender] -= _value;                     // Subtract from the sender
-        balanceOf[_to] += _value;                            // Add the same to the recipient
-        Transfer(msg.sender, _to, _value, _reference);       // Notify anyone listening that this transfer took place, reference data stored outside of blockchain. TBC where.
-    }
+    function transfer(address _to, uint256 _amount, uint256 _reference){
+        // check whether we can transfer from sender
+        if(!approvedAccount[msg.sender]) throw;
+        if(balanceOf[msg.sender] < _amount) throw;
 
-    /* A contract attempts to get the coins */
-    /*
-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
-        if (frozenAccount[_from]) throw;                        // Check if frozen
-        if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
-        if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
-        balanceOf[_from] -= _value;                          // Subtract from the sender
-        balanceOf[_to] += _value;                            // Add the same to the recipient
-        allowance[_from][msg.sender] -= _value;
-        Transfer(_from, _to, _value);
-        return true;
+        // check for overflow
+        if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
+
+        balanceOf[msg.sender] -= _amount;
+        balanceOf[_to] += _amount;
+        Transfer(msg.sender, _to, _amount, _reference);
     }
-    */
 
     /* Execute transfers signed by sender */
-    function executeSignedTransfer(
+    function signedTransfer(
         // requested transfer
-        address _from, address _to, uint256 _value, uint256 _reference, uint256 _fee,
+        address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee,
         // where to transfer the transaction fee
         address _sponsor,
-        // transfer signature
-        uint8 v, bytes32 r, bytes32 s)
-    {
-        // Check if the sender has enough funds
-        if (balanceOf[_from] < _value + _fee) throw;
+        // signature of _from
+        uint8 v, bytes32 r, bytes32 s
+    ){
+        // check whether we can transfer from sender
+        if(!approvedAccount[_from]) throw;
+        if(balanceOf[_from] < _amount + _fee) throw;
 
-        // Check for overflows
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
-        if (balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
-
-        // Check whether the accounts can transact
-        if (!approvedAccount[_from]) throw;
-        // if (!approvedAccount[_to]) throw;
-        // if (!approvedAccount[_sponsor]) throw;
+        // check for overflow
+        if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
+        if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
         // Verify that _from requested the transfer
-        if (ecrecover(sha3(_from, _to, _value, _fee, _reference), v, r, s) != _from) throw;
+        if (ecrecover(sha3(_from, _to, _amount, _fee, _reference), v, r, s) != _from)
+            throw;
 
-        // Update _from, _to balance
-        balanceOf[_from] -= _value;
-        balanceOf[_to] += _value;
-        Transfer(_from, _to, _value, _reference);
+        balanceOf[_from] -= _amount;
+        balanceOf[_to] += _amount;
+        Transfer(_from, _to, _amount, _reference);
 
-        // If _sponsor was offered a fee
-		if (_fee > 0) {
-            // Update _from, _to balance
-			balanceOf[_from] -= _fee;
-			balanceOf[_sponsor] += _fee;
-	        Transfer(_from, _sponsor, _fee, 0);
-		}
+        if (_fee > 0) {
+            balanceOf[_from] -= _fee;
+            balanceOf[_sponsor] += _fee;
+            Transfer(_from, _sponsor, _fee, 0);
+        }
     }
 
 
@@ -119,53 +102,81 @@ contract Euro2 is Mintable, Policable {
         ApprovedAccount(target, approve);
     }
 
+    function assignRecoveryAccount(address _trusted){
+        if(_trusted == 0) {
+            delete recoveryAccount[msg.sender];
+        } else {
+            recoveryAccount[msg.sender] = _trusted;
+        }
+    }
 
-	/* Allow another contract to spend some tokens in your behalf */
-	/*
-	function approveAndCall(address _spender, uint256 _value, bytes _extraData)
-		returns (bool success) {
-		allowance[msg.sender][_spender] = _value;
-		tokenRecipient spender = tokenRecipient(_spender);
-		spender.receiveApproval(msg.sender, _value, this, _extraData);
-		return true;
-	}
-	*/
+    function recoverAccount(address _recover, address _to){
+        // check whether there is the correct recoverer
+        if(msg.sender != recoveryAccount[_recover]) throw;
 
-	/* A contract attempts to get the coins */
-	/*
-	function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
-		if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
-		if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
-		if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
-		balanceOf[_from] -= _value;                          // Subtract from the sender
-		balanceOf[_to] += _value;                            // Add the same to the recipient
-		allowance[_from][msg.sender] -= _value;
-		Transfer(_from, _to, _value);
-		return true;
-	}
-	*/
+        // check whether we can transfer from sender
+        if(!approvedAccount[_recover]) throw;
 
-	/* This unnamed function is called whenever someone tries to send ether to it */
-	function () {
-		throw;     // Prevents accidental sending of ether
-	}
+        uint256 amount = balanceOf[_recover];
+
+        // check for overflow
+        if(balanceOf[_to] + amount < balanceOf[_to]) throw;
+
+        balanceOf[_to] += amount;
+        Transfer(_recover, _to, amount, 0);
+
+        // tear down the unusable account
+        delete balanceOf[_recover];
+        delete recoveryAccount[_recover];
+        delete approvedAccount[_recover];
+    }
+
+    /* Allow another contract to spend some tokens in your behalf */
+    /*
+    function approveAndCall(address _spender, uint256 _value, bytes _extraData)
+        returns (bool success) {
+        allowance[msg.sender][_spender] = _value;
+        tokenRecipient spender = tokenRecipient(_spender);
+        spender.receiveApproval(msg.sender, _value, this, _extraData);
+        return true;
+    }
+    */
+
+    /* A contract attempts to get the coins */
+    /*
+    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+        if (balanceOf[_from] < _value) throw;                 // Check if the sender has enough
+        if (balanceOf[_to] + _value < balanceOf[_to]) throw;  // Check for overflows
+        if (_value > allowance[_from][msg.sender]) throw;   // Check allowance
+        balanceOf[_from] -= _value;                          // Subtract from the sender
+        balanceOf[_to] += _value;                            // Add the same to the recipient
+        allowance[_from][msg.sender] -= _value;
+        Transfer(_from, _to, _value);
+        return true;
+    }
+    */
+
+    /* This unnamed function is called whenever someone tries to send ether to it */
+    function () {
+        throw;     // Prevents accidental sending of ether
+    }
 }
 
 contract Relay {
-	address public currentVersion;
+    address public currentVersion;
     address public owner;
 
-	function Relay(address initialAddress){
-		currentVersion = initialAddress;
-		owner = msg.sender;
-	}
+    function Relay(address initialAddress){
+        currentVersion = initialAddress;
+        owner = msg.sender;
+    }
 
-	function update(address newAddress){
-		if(msg.sender != owner) throw;
-		currentVersion = newAddress;
-	}
+    function update(address newAddress){
+        if(msg.sender != owner) throw;
+        currentVersion = newAddress;
+    }
 
-	function(){
-		if(!currentVersion.delegatecall(msg.data)) throw;
-	}
+    function(){
+        if(!currentVersion.delegatecall(msg.data)) throw;
+    }
 }
