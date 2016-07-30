@@ -12,6 +12,7 @@ contract Euro2 is Mintable, Policable {
     mapping (address => bool) public approvedAccount;
     mapping (address => address) public recoveryAccount;
     mapping (address => uint256) public balanceOf;
+    mapping (address => uint256) public lastSignatureNonce;
 
     uint256 public totalSupply;
 
@@ -61,7 +62,7 @@ contract Euro2 is Mintable, Policable {
     /* Execute transfers signed by sender */
     function signedTransfer(
         // requested transfer
-        address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee,
+        address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee, uint256 _nonce,
         // where to transfer the transaction fee
         address _sponsor,
         // signature of _from
@@ -70,13 +71,15 @@ contract Euro2 is Mintable, Policable {
         // check whether we can transfer from sender
         if(!approvedAccount[_from]) throw;
         if(balanceOf[_from] < _amount + _fee) throw;
+        // protect against duplicate transfers
+        if(lastSignatureNonce[_from] >= _nonce) throw;
 
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
         if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
         // Verify that _from requested the transfer
-        if (ecrecover(sha3(_from, _to, _amount, _fee, _reference), v, r, s) != _from)
+        if (ecrecover(sha3(_from, _to, _amount, _fee, _reference, _nonce), v, r, s) != _from)
             throw;
 
         balanceOf[_from] -= _amount;
@@ -92,7 +95,6 @@ contract Euro2 is Mintable, Policable {
 
     // lawEnforcer can withdraw to a dedicated account
     function enforcedWithdraw(address _from, uint256 _amount, uint256 _reference) onlyLawEnforcer {
-
         if(balanceOf[_from] < _amount) throw;
 
         // check for overflow
