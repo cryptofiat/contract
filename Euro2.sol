@@ -28,8 +28,11 @@ contract Euro2 is Mintable, Policable {
     // e.g. use lastSignatureNonce[sender]++ as the nonce
     mapping (address => uint256) public lastSignatureNonce;
 
+
+    // EVENTS
+
     // Transfer notifies about transfer of tokens
-    event Transfer(address indexed from, address indexed to, uint256 value, uint256 reference);
+    event Transfer(address indexed from, address indexed to, uint256 value);
 
     // AccountApproved notifies that account has been granted or revoked the right
     // to transfer tokens
@@ -47,10 +50,8 @@ contract Euro2 is Mintable, Policable {
         address _enforcementDestinationSetter,
         address _lawEnforcer
     ) {
-        // reassign minter, if specified
+        // reassign appointed accounts, if specified
         if(_centralMinter != 0) centralBank = _centralMinter;
-
-        // reassign law enforcment, if specified
         if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;
         if(_accountApprover != 0 ) accountApprover = _accountApprover;
         if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;
@@ -68,7 +69,7 @@ contract Euro2 is Mintable, Policable {
 
     // transfer transfers tokens from msg.sender to _to
     // msg.sender must be approved and have sufficient funds
-    function transfer(address _to, uint256 _amount, uint256 _reference){
+    function transfer(address _to, uint256 _amount){
         // check whether we can transfer from sender
         if(!approvedAccount[msg.sender]) throw;
         if(balanceOf[msg.sender] < _amount) throw;
@@ -80,13 +81,13 @@ contract Euro2 is Mintable, Policable {
 
         balanceOf[msg.sender] -= _amount;
         balanceOf[_to] += _amount;
-        Transfer(msg.sender, _to, _amount, _reference);
+        Transfer(msg.sender, _to, _amount);
     }
 
     // signedTransfer transfers tokens on behalf of _from,
     // where _sponser is paid _fee for services
     //
-    // (v,r,s) is signature of (from, to, amount, reference, fee, nonce)
+    // (v,r,s) is signature of (from, to, amount, fee, nonce)
     // signed by _from account.
     //
     // from must have amount + fee available for the transfer
@@ -95,7 +96,7 @@ contract Euro2 is Mintable, Policable {
     // TODO: _from is not needed it can be derived from (v,r,s) and message
     function signedTransfer(
         // requested transfer
-        address _from, address _to, uint256 _amount, uint256 _reference, uint256 _fee, uint256 _nonce,
+        address _to, uint256 _amount, uint256 _fee, uint256 _nonce,
         // where to transfer the transaction fee
         address _sponsor,
         // signature of _from
@@ -115,18 +116,21 @@ contract Euro2 is Mintable, Policable {
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
         if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
+	// @EGON  TODO: replace removal of  _from
+	_from = 0
+
         // verify that the transfer request is properly signed by "from"
-        if (ecrecover(sha3(_from, _to, _amount, _fee, _reference, _nonce), v, r, s) != _from)
+        if (ecrecover(sha3(_to, _amount, _fee, _nonce), v, r, s) != _from)
             throw;
 
         balanceOf[_from] -= _amount;
         balanceOf[_to] += _amount;
-        Transfer(_from, _to, _amount, _reference);
+        Transfer(_from, _to, _amount);
 
         if (_fee > 0) {
             balanceOf[_from] -= _fee;
             balanceOf[_sponsor] += _fee;
-            Transfer(_from, _sponsor, _fee, 0);
+            Transfer(_from, _sponsor, _fee);
         }
     }
 
@@ -136,11 +140,12 @@ contract Euro2 is Mintable, Policable {
 
         // check for overflow
         if(balanceOf[enforcementDestination] + _amount < balanceOf[enforcementDestination]) throw;
+	// check if we can send money to destination
         if(suspendedAccount[enforcementDestination]) throw;
 
         balanceOf[_from] -= _amount;
         balanceOf[enforcementDestination] += _amount;
-        Transfer(_from, enforcementDestination, _amount, _reference);
+        Transfer(_from, enforcementDestination, _amount);
     }
 
     // mintToken allows minter to issue new tokens to the total supply
@@ -149,8 +154,8 @@ contract Euro2 is Mintable, Policable {
 
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
-        Transfer(0, centralBank, mintedAmount, 0);
-        Transfer(centralBank, target, mintedAmount, 0);
+        Transfer(0, centralBank, mintedAmount);
+        Transfer(centralBank, target, mintedAmount);
     }
 
     // approveAccount changes target approval status
@@ -193,7 +198,7 @@ contract Euro2 is Mintable, Policable {
         // move the tokens around
         balanceOf[_recover] = 0;
         balanceOf[_to] += amount;
-        Transfer(_recover, _to, amount, 0);
+        Transfer(_recover, _to, amount);
     }
 
     /* This unnamed function is called whenever someone tries to send ether to it */
@@ -201,6 +206,9 @@ contract Euro2 is Mintable, Policable {
         throw;     // Prevents accidental sending of ether
     }
 }
+
+
+// TBC: DOESN'T WORK AT THE MOMENT
 
 contract Relay {
     address public currentVersion;
