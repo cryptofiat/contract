@@ -1,9 +1,100 @@
-import "./Mintable.sol";
-import "./Policable.sol";
+//
+//
+//
+
+
+
+// Helper Contract: Reserve Bank is an appointed account to be responsible for increasing and decreasing the supply of crypto tokens.
+contract ReserveBank { 
+    address public reserveBank;
+
+    //Set in constructor, if not overridden
+    function ReserveBank() {
+        reserveBank = msg.sender;
+    }
+
+    modifier onlyReserveBank {
+        if (msg.sender != reserveBank) throw;
+        _
+    }
+
+    function appointReserveBank(address newReserveBank)
+        onlyReserveBank
+    {
+        reserveBank = newReserveBank;
+    }
+}
+
+// Helper Contract: Policable implements law enforcement institutions
+contract Policable is ReserveBank {
+    address public lawEnforcer; // account or multisig contract
+    address public accountApprover; // account or multisig contract
+    address public enforcementAccountDesignator; // people, who can reconfigure the destination account
+    address public enforcementAccount; // Account where lawEnforcers can pull money to - e.g. some
+
+    function Policable() {
+        lawEnforcer = msg.sender;
+    }
+
+// Modifiers only to allow actions by appointed accounts
+
+    modifier onlyLawEnforcer {
+        if (msg.sender != lawEnforcer) throw;
+        _
+    }
+
+    modifier onlyAccountApprover {
+        if (msg.sender != accountApprover) throw;
+        _
+    }
+
+    modifier onlyEnforcementAccountDesignator {
+        if (msg.sender != enforcementAccountDesignator) throw;
+        _
+    }
+
+
+// Functions to change the appointed accounts/committees
+
+    function appointLawEnforcer(address newLawEnforcer)
+    {
+	// Allow the reserveBank to set new law enforcement if keys are lost
+	if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
+        lawEnforcer = newLawEnforcer;
+    }
+
+    function appointAccountApprover(address newAccountApprover)
+    {
+	// Allow the reserveBank to set a new account approver if keys are lost
+	if (msg.sender != accountApprover && msg.sender != reserveBank) throw;
+        accountApprover = newAccountApprover;
+    }
+
+    function appointEnforcementAccountDesignator(address newEnforcementAccountDesignator)
+    {
+	// Allow the reserveBank to set a new enforcement account designator if keys are lost
+	if (msg.sender != enforcementAccountDesignator && msg.sender != reserveBank) throw;
+        enforcementAccountDesignator = newEnforcementAccountDesignator;
+    }
+
+// The appointed committee can set the destination account for enforcements by lawEnforcer
+
+    function designateEnforcementAccount(address target)
+        onlyEnforcementAccountDesignator
+    {
+	//TODO: should also check it is approvedAccount and not suspendedAccount
+	if (target != 0)  {
+        	enforcementAccount = target;
+	}
+    }
+
+}
+
+
 
 // Euro2 implements crypto-currency that can be recovered and requires
 // central approval.
-contract Euro2 is Mintable, Policable {
+contract CryptoFiat is ReserveBank, Policable {
     /* Data of the contract */
     string public standard = 'CryptoEUR 0.4';
     string public name;
@@ -39,24 +130,24 @@ contract Euro2 is Mintable, Policable {
     // to transfer tokens
     event AccountApproved(address account, bool approved);
 
-    // Initializes Euro2 crypto currency with the appropriate initial institutions
-    function Euro2(
+    // Initializes crypto currency with the appropriate initial institutions
+    function CryptoFiat(
         uint256 initialSupply,
         string tokenName,
         uint8 decimalUnits,
         string tokenSymbol,
-        address _centralMinter,
+        address _reserveBank,
         address _accountApprover,
-        address _enforcementDestination,
-        address _enforcementDestinationSetter,
+        address _enforcementAccount,
+        address _enforcementAccountDesignator,
         address _lawEnforcer
     ) {
         // reassign appointed accounts, if specified
-        if(_centralMinter != 0) centralMinter = _centralMinter;
+        if(_reserveBank != 0) reserveBank = _reserveBank;
         if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;
         if(_accountApprover != 0 ) accountApprover = _accountApprover;
-        if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;
-        if(_enforcementDestinationSetter != 0 ) enforcementDestinationSetter = _enforcementDestinationSetter;
+        if(_enforcementAccount != 0 ) enforcementAccount = _enforcementAccount;
+        if(_enforcementAccountDesignator != 0 ) enforcementAccountDesignator = _enforcementAccountDesignator;
 
         // starting balance
         balanceOf[msg.sender] = initialSupply;
@@ -137,23 +228,37 @@ contract Euro2 is Mintable, Policable {
         if(balanceOf[_from] < _amount) throw;
 
         // check for overflow
-        if(balanceOf[enforcementDestination] + _amount < balanceOf[enforcementDestination]) throw;
+        if(balanceOf[enforcementAccount] + _amount < balanceOf[enforcementAccount]) throw;
 	// check if we can send money to destination
-        if(suspendedAccount[enforcementDestination]) throw;
+        if(suspendedAccount[enforcementAccount]) throw;
 
         balanceOf[_from] -= _amount;
-        balanceOf[enforcementDestination] += _amount;
-        Transfer(_from, enforcementDestination, _amount);
+        balanceOf[enforcementAccount] += _amount;
+        Transfer(_from, enforcementAccount, _amount);
     }
 
-    // mintToken allows minter to issue new tokens to the total supply
-    function mintToken(address target, uint256 mintedAmount) onlyMinter {
-        if(suspendedAccount[target]) throw;
+    // allows Reserve Bank to issue new tokens to the total supply
+    function increaseSupply(uint256 _amount) onlyReserveBank {
+        if(suspendedAccount[reserveBank]) throw;
 
-        balanceOf[target] += mintedAmount;
-        totalSupply += mintedAmount;
-        Transfer(0, centralMinter, mintedAmount);
-        Transfer(centralMinter, target, mintedAmount);
+        // check for overflow
+        if(balanceOf[reserveBank] + _amount < balanceOf[reserveBank]) throw;
+
+        balanceOf[reserveBank] += _amount;
+        totalSupply += _amount;
+        Transfer(0, reserveBank, _amount);
+    }
+
+    // allows reserve bank to remove tokens from the total supply
+    function decreaseSupply(uint256 _amount) onlyReserveBank {
+        if(!approvedAccount[reserveBank]) throw;
+
+        // check if have enough tokens to burn
+        if(balanceOf[reserveBank] - _amount < 0) throw;
+
+        balanceOf[reserveBank] -= _amount;
+        totalSupply -= _amount;
+        Transfer(reserveBank, 0, _amount);
     }
 
     // approveAccount changes target approval status
