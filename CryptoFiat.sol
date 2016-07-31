@@ -5,7 +5,7 @@
 
 
 // Helper Contract: Reserve Bank is an appointed account to be responsible for increasing and decreasing the supply of crypto tokens.
-contract ReserveBank { 
+contract ReserveBank {
     address public reserveBank;
 
     //Set in constructor, if not overridden
@@ -58,34 +58,33 @@ contract Policable is ReserveBank {
 
     function appointLawEnforcer(address newLawEnforcer)
     {
-	// Allow the reserveBank to set new law enforcement if keys are lost
-	if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
-        lawEnforcer = newLawEnforcer;
+        // Allow the reserveBank to set new law enforcement if keys are lost
+        if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
+            lawEnforcer = newLawEnforcer;
     }
 
     function appointAccountApprover(address newAccountApprover)
     {
-	// Allow the reserveBank to set a new account approver if keys are lost
-	if (msg.sender != accountApprover && msg.sender != reserveBank) throw;
-        accountApprover = newAccountApprover;
+        // Allow the reserveBank to set a new account approver if keys are lost
+        if (msg.sender != accountApprover && msg.sender != reserveBank) throw;
+            accountApprover = newAccountApprover;
     }
 
     function appointEnforcementAccountDesignator(address newEnforcementAccountDesignator)
     {
-	// Allow the reserveBank to set a new enforcement account designator if keys are lost
-	if (msg.sender != enforcementAccountDesignator && msg.sender != reserveBank) throw;
-        enforcementAccountDesignator = newEnforcementAccountDesignator;
+        // Allow the reserveBank to set a new enforcement account designator if keys are lost
+        if (msg.sender != enforcementAccountDesignator && msg.sender != reserveBank) throw;
+            enforcementAccountDesignator = newEnforcementAccountDesignator;
     }
 
-// The appointed committee can set the destination account for enforcements by lawEnforcer
-
+    // The appointed committee can set the destination account for enforcements by lawEnforcer
     function designateEnforcementAccount(address target)
         onlyEnforcementAccountDesignator
     {
-	//TODO: should also check it is approvedAccount and not suspendedAccount
-	if (target != 0)  {
-        	enforcementAccount = target;
-	}
+        //TODO: should also check it is accountApproved and not accountClosed
+        if (target != 0)  {
+            enforcementAccount = target;
+        }
     }
 
 }
@@ -96,7 +95,7 @@ contract Policable is ReserveBank {
 // central approval.
 contract CryptoFiat is ReserveBank, Policable {
     /* Data of the contract */
-    string public standard = 'CryptoEUR 0.4';
+    string public standard = 'CryptoFiat 0.4';
     string public name;
     string public symbol;
     uint8  public decimals;
@@ -105,20 +104,20 @@ contract CryptoFiat is ReserveBank, Policable {
     uint256 public totalSupply;
     // tracks balance of a particular account
     mapping (address => uint256) public balanceOf;
-    // set of approved accounts that can transfer out Euro2 tokens. 
+    // set of approved accounts that can transfer out Euro2 tokens.
     //Unapproved accounts can still receive tokens, the account holders  can't use them  until they get approved.
-    mapping (address => bool) public approvedAccount;
+    mapping (address => bool) public approved; // TODO: approved
     // set of accounts that can not receive tokens
-    mapping (address => bool) public suspendedAccount;
+    mapping (address => bool) public closed; // TODO: closed
 
     // each address can, optionally, specify a recovery account in case the
     // original address keys are lost
-    mapping (address => address) public recoveryAccount;
+    mapping (address => address) public recoveryAccountOf;
 
     // when using signed transfer it is required to protect against replays of
     // transfer requests. the nonces used, must be increasing
-    // e.g. use lastSignatureNonce[sender]++ as the nonce
-    mapping (address => uint256) public lastSignatureNonce;
+    // e.g. use delegatedTransferNonce[sender]++ as the nonce
+    mapping (address => uint256) public delegatedTransferNonce;
 
 
     // EVENTS
@@ -128,7 +127,10 @@ contract CryptoFiat is ReserveBank, Policable {
 
     // AccountApproved notifies that account has been granted or revoked the right
     // to transfer tokens
-    event AccountApproved(address account, bool approved);
+    event AccountApproved(address account);
+    event AccountFrozen(address account);
+    event AccountUnfrozen(address account);
+    event AccountClosed(address account);
 
     // Initializes crypto currency with the appropriate initial institutions
     function CryptoFiat(
@@ -163,11 +165,11 @@ contract CryptoFiat is ReserveBank, Policable {
     // msg.sender must be approved and have sufficient funds
     function transfer(address _to, uint256 _amount){
         // check whether we can transfer from sender
-        if(!approvedAccount[msg.sender]) throw;
+        if(!approved[msg.sender]) throw;
         if(balanceOf[msg.sender] < _amount) throw;
 
         // check whether we can send to the account
-        if(suspendedAccount[_to]) throw;
+        if(closed[_to]) throw;
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
 
@@ -176,7 +178,7 @@ contract CryptoFiat is ReserveBank, Policable {
         Transfer(msg.sender, _to, _amount);
     }
 
-    // signedTransfer transfers tokens on behalf of _from,
+    // delegatedTransfer transfers tokens on behalf of _from,
     // where _sponser is paid _fee for services
     //
     // (v,r,s) is signature of (to, amount, fee, nonce)
@@ -184,28 +186,28 @@ contract CryptoFiat is ReserveBank, Policable {
     //
     // from must have amount + fee available for the transfer
     // nonce must be larger than previous nonce used by that account
-    function signedTransfer(
+    function delegatedTransfer(
         // requested transfer
         address _from, address _to, uint256 _amount, uint256 _fee, uint256 _nonce,
         // signature of message above signed by _from
         uint8 sig_v, bytes32 sig_r, bytes32 sig_s,
         // where to transfer the transaction fee
-        address _sponsor
+        address _delegate
     ){
         // check whether we can transfer from sender
-        if(!approvedAccount[_from]) throw;
+        if(!approved[_from]) throw;
         if(balanceOf[_from] < _amount + _fee) throw;
 
         // protect against duplicate transfers
-        if(lastSignatureNonce[_from] >= _nonce) throw;
+        if(delegatedTransferNonce[_from] >= _nonce) throw;
 
         // check whether we can send to the accounts
-        if(suspendedAccount[_to]) throw;
-        if((_fee > 0) && suspendedAccount[_sponsor]) throw;
+        if(closed[_to]) throw;
+        if((_fee > 0) && closed[_delegate]) throw;
 
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
-        if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
+        if(balanceOf[_delegate] + _fee < balanceOf[_delegate]) throw;
 
         // verify that the requested transfer is properly signed
         // TODO: research whether _from field can be removed from the arguments
@@ -218,19 +220,19 @@ contract CryptoFiat is ReserveBank, Policable {
 
         if (_fee > 0) {
             balanceOf[_from] -= _fee;
-            balanceOf[_sponsor] += _fee;
-            Transfer(_from, _sponsor, _fee);
+            balanceOf[_delegate] += _fee;
+            Transfer(_from, _delegate, _fee);
         }
     }
 
     // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
-    function enforcedWithdraw(address _from, uint256 _amount, uint256 _reference) onlyLawEnforcer {
+    function enforcedWithdraw(address _from, uint256 _amount) onlyLawEnforcer {
         if(balanceOf[_from] < _amount) throw;
 
         // check for overflow
         if(balanceOf[enforcementAccount] + _amount < balanceOf[enforcementAccount]) throw;
-	// check if we can send money to destination
-        if(suspendedAccount[enforcementAccount]) throw;
+    // check if we can send money to destination
+        if(closed[enforcementAccount]) throw;
 
         balanceOf[_from] -= _amount;
         balanceOf[enforcementAccount] += _amount;
@@ -239,7 +241,7 @@ contract CryptoFiat is ReserveBank, Policable {
 
     // allows Reserve Bank to issue new tokens to the total supply
     function increaseSupply(uint256 _amount) onlyReserveBank {
-        if(suspendedAccount[reserveBank]) throw;
+        if(closed[reserveBank]) throw;
 
         // check for overflow
         if(balanceOf[reserveBank] + _amount < balanceOf[reserveBank]) throw;
@@ -251,7 +253,7 @@ contract CryptoFiat is ReserveBank, Policable {
 
     // allows reserve bank to remove tokens from the total supply
     function decreaseSupply(uint256 _amount) onlyReserveBank {
-        if(!approvedAccount[reserveBank]) throw;
+        if(!approved[reserveBank]) throw;
 
         // check if have enough tokens to burn
         if(balanceOf[reserveBank] - _amount < 0) throw;
@@ -262,20 +264,38 @@ contract CryptoFiat is ReserveBank, Policable {
     }
 
     // approveAccount changes target approval status
-    function approveAccount(address target, bool approve) onlyAccountApprover {
-        approvedAccount[target] = approve;
-        AccountApproved(target, approve);
+    function approveAccount(address target) onlyAccountApprover {
+        //TODO: check if already in map
+        approved[target] = true;
+        AccountApproved(target);
     }
 
-    // assignRecoveryAccount allows an account owner to specify a
+    function closeAccount(address target) onlyAccountApprover {
+        closed[target] = true;
+        AccountClosed(target);
+    }
+
+    // freezeAccount disallows account to send money
+    function freezeAccount(address target) onlyLawEnforcer {
+        approved[target] = false;
+        AccountFrozen(target);
+    }
+
+    // unfreezeAccount re-allows account to send money
+    function unfreezeAccount(address target) onlyLawEnforcer {
+        approved[target] = true;
+        AccountUnfrozen(target);
+    }
+
+    // designateRecoveryAccount allows an account owner to specify a
     // trusted party that can retransfer all money to a backup/new account
     //
     // if the specified account is 0, the recovery account will be removed
-    function assignRecoveryAccount(address _trusted){
+    function designateRecoveryAccount(address _trusted){
         if(_trusted == 0) {
-            delete recoveryAccount[msg.sender];
+            delete recoveryAccountOf[msg.sender];
         } else {
-            recoveryAccount[msg.sender] = _trusted;
+            recoveryAccountOf[msg.sender] = _trusted;
         }
     }
 
@@ -283,14 +303,15 @@ contract CryptoFiat is ReserveBank, Policable {
     // a lost account to a new or another account
     function recoverAccount(address _recover, address _to){
         // check whether there is the correct recoverer
-        if(msg.sender != recoveryAccount[_recover]) throw;
+        if(msg.sender != recoveryAccountOf[_recover]) throw;
 
         // check whether we can recover into _to address
-        if(suspendedAccount[_to]) throw;
+        if(closed[_to]) throw;
 
         // check whether we can transfer from sender
-        if(!approvedAccount[_recover]) throw;
-        suspendedAccount[_recover] = true;
+        if(!approved[_recover]) throw;
+        closed[_recover] = true;
+        AccountClosed(_recover);
 
         // get the current balance of the recover account
         uint256 amount = balanceOf[_recover];
@@ -307,27 +328,5 @@ contract CryptoFiat is ReserveBank, Policable {
     /* This unnamed function is called whenever someone tries to send ether to it */
     function () {
         throw;     // Prevents accidental sending of ether
-    }
-}
-
-
-// TBC: DOESN'T WORK AT THE MOMENT
-
-contract Relay {
-    address public currentVersion;
-    address public owner;
-
-    function Relay(address initialAddress){
-        currentVersion = initialAddress;
-        owner = msg.sender;
-    }
-
-    function update(address newAddress){
-        if(msg.sender != owner) throw;
-        currentVersion = newAddress;
-    }
-
-    function(){
-        if(!currentVersion.delegatecall(msg.data)) throw;
     }
 }
