@@ -5,7 +5,7 @@ import "./Policable.sol";
 // central approval.
 contract Euro2 is Mintable, Policable {
     /* Data of the contract */
-    string public standard = 'CryptoEUR 0.2';
+    string public standard = 'CryptoEUR 0.4';
     string public name;
     string public symbol;
     uint8  public decimals;
@@ -14,9 +14,10 @@ contract Euro2 is Mintable, Policable {
     uint256 public totalSupply;
     // tracks balance of a particular account
     mapping (address => uint256) public balanceOf;
-    // set of approved accounts that can transfer Euro2 tokens
+    // set of approved accounts that can transfer out Euro2 tokens. 
+    //Unapproved accounts can still receive tokens, the account holders  can't use them  until they get approved.
     mapping (address => bool) public approvedAccount;
-    // set of accounts that should not receive tokens
+    // set of accounts that can not receive tokens
     mapping (address => bool) public suspendedAccount;
 
     // each address can, optionally, specify a recovery account in case the
@@ -51,7 +52,7 @@ contract Euro2 is Mintable, Policable {
         address _lawEnforcer
     ) {
         // reassign appointed accounts, if specified
-        if(_centralMinter != 0) centralBank = _centralMinter;
+        if(_centralMinter != 0) centralMinter = _centralMinter;
         if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;
         if(_accountApprover != 0 ) accountApprover = _accountApprover;
         if(_enforcementDestination != 0 ) enforcementDestination = _enforcementDestination;
@@ -151,8 +152,8 @@ contract Euro2 is Mintable, Policable {
 
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
-        Transfer(0, centralBank, mintedAmount);
-        Transfer(centralBank, target, mintedAmount);
+        Transfer(0, centralMinter, mintedAmount);
+        Transfer(centralMinter, target, mintedAmount);
     }
 
     // approveAccount changes target approval status

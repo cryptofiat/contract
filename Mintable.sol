@@ -1,19 +1,19 @@
 // Mintable allows an account to be responsible for minting.
 contract Mintable {
-    address public centralBank;
+    address public centralMinter;
 
     function Mintable() {
-        centralBank = msg.sender;
+        centralMinter = msg.sender;
     }
 
     modifier onlyMinter {
-        if (msg.sender != centralBank) throw;
+        if (msg.sender != centralMinter) throw;
         _
     }
 
     function transferMinter(address newMinter)
         onlyMinter
     {
-        centralBank = newMinter;
+        centralMinter = newMinter;
     }
 }
