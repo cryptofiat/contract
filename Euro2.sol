@@ -87,27 +87,23 @@ contract Euro2 is Mintable, Policable {
     // signedTransfer transfers tokens on behalf of _from,
     // where _sponser is paid _fee for services
     //
-    // (v,r,s) is signature of (from, to, amount, fee, nonce)
+    // (v,r,s) is signature of (to, amount, fee, nonce)
     // signed by _from account.
     //
     // from must have amount + fee available for the transfer
     // nonce must be larger than previous nonce used by that account
-    //
-    // TODO: _from is not needed it can be derived from (v,r,s) and message
     function signedTransfer(
         // requested transfer
-        address _to, uint256 _amount, uint256 _fee, uint256 _nonce,
+        address _from, address _to, uint256 _amount, uint256 _fee, uint256 _nonce,
+        // signature of message above signed by _from
+        uint8 sig_v, bytes32 sig_r, bytes32 sig_s,
         // where to transfer the transaction fee
-        address _sponsor,
-        // signature of _from
-        uint8 v, bytes32 r, bytes32 s
+        address _sponsor
     ){
-	// @EGON  TODO: replace removal of  _from
-	address _from = 0;
-
         // check whether we can transfer from sender
         if(!approvedAccount[_from]) throw;
         if(balanceOf[_from] < _amount + _fee) throw;
+
         // protect against duplicate transfers
         if(lastSignatureNonce[_from] >= _nonce) throw;
 
@@ -119,9 +115,10 @@ contract Euro2 is Mintable, Policable {
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
         if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
 
-        // verify that the transfer request is properly signed by "from"
-        if (ecrecover(sha3(_to, _amount, _fee, _nonce), v, r, s) != _from)
-            throw;
+        // verify that the requested transfer is properly signed
+        // TODO: research whether _from field can be removed from the arguments
+        address verify = ecrecover(sha3(_from, _to, _amount, _fee, _nonce), sig_v, sig_r, sig_s);
+        if(verify != _from) throw;
 
         balanceOf[_from] -= _amount;
         balanceOf[_to] += _amount;
