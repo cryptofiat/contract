@@ -102,6 +102,9 @@ contract Euro2 is Mintable, Policable {
         // signature of _from
         uint8 v, bytes32 r, bytes32 s
     ){
+	// @EGON  TODO: replace removal of  _from
+	address _from = 0;
+
         // check whether we can transfer from sender
         if(!approvedAccount[_from]) throw;
         if(balanceOf[_from] < _amount + _fee) throw;
@@ -115,9 +118,6 @@ contract Euro2 is Mintable, Policable {
         // check for overflow
         if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
         if(balanceOf[_sponsor] + _fee < balanceOf[_sponsor]) throw;
-
-	// @EGON  TODO: replace removal of  _from
-	_from = 0
 
         // verify that the transfer request is properly signed by "from"
         if (ecrecover(sha3(_to, _amount, _fee, _nonce), v, r, s) != _from)
