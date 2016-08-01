@@ -57,6 +57,7 @@ contract Accounts is Appointed {
     event AccountClosed(address source);
 
     function approveAccount(address account) onlyAccountApprover {
+        //TODO: protect against double approve
         approved[account] = true;
         AccountApproved(account);
     }
@@ -67,7 +68,7 @@ contract Accounts is Appointed {
         AccountClosed(target);
     }
 
-    modifier canSend(address account)    {
+    modifier canSend(address account) {
         if(!approved[account]) throw;
         if(account == 0) throw;
         _
@@ -125,6 +126,7 @@ contract Supply is Appointed, Balance {
         balanceOf[reserveBank] += amount;
         totalSupply += amount;
 
+        //TODO: check for casting issues
         SupplyChanged(int256(amount));
         Transfer(0, reserveBank, amount);
     }
@@ -140,6 +142,7 @@ contract Supply is Appointed, Balance {
         balanceOf[reserveBank] -= amount;
         totalSupply -= amount;
 
+        //TODO: check for casting issues
         SupplyChanged(-int256(amount));
         Transfer(reserveBank, 0, amount);
     }
