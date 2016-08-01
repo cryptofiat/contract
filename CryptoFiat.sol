@@ -153,7 +153,10 @@ contract DelegatedTransfer is Balance {
     // multiple times
     mapping (address => uint256) public delegatedTransferNonce;
 
-    function recoverSigner(bytes32 hash, bytes signature) returns (address) {
+    function recoverSigner(bytes32 hash, bytes signature)
+        internal
+        returns (address)
+    {
         bytes32 r;
         bytes32 s;
         uint8 v;
