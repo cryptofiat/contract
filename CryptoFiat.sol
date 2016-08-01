@@ -1,9 +1,3 @@
-// Events pre-defines all events in the contract
-contract Events {
-    event Transfer(address source, address destination, uint256 amount);
-    event SupplyChanged(address source, int256 amount);
-}
-
 // Appointed defines all appointed roles and specifies how they can be changed
 contract Appointed {
     address public reserveBank;
@@ -52,7 +46,7 @@ contract Appointed {
 }
 
 // Accounts defines basic account and capabilities
-contract Accounts is Events, Appointed {
+contract Accounts is Appointed {
     // accounts that can send money
     mapping (address => bool) public approved;
     // accounts that cannot receive money
@@ -86,8 +80,10 @@ contract Accounts is Events, Appointed {
 }
 
 // Balance defines the balance for Accounts
-contract Balance is Events, Accounts {
+contract Balance is Accounts {
     mapping (address => uint256) public balanceOf;
+
+    event Transfer(address source, address destination, uint256 amount);
 
     modifier hasFunds(address account, uint256 amount) {
         if(balanceOf[account] < amount) throw;
@@ -115,6 +111,8 @@ contract Supply is Appointed, Balance {
     // totalSupply is the total amount of tokens in circulation
     uint256 public totalSupply;
 
+    event SupplyChanged(int256 amount);
+
     // increaseSupply increases the tokens in circulation
     function increaseSupply(uint256 amount)
         onlyReserveBank
@@ -127,6 +125,7 @@ contract Supply is Appointed, Balance {
         balanceOf[reserveBank] += amount;
         totalSupply += amount;
 
+        SupplyChanged(int256(amount));
         Transfer(0, reserveBank, amount);
     }
 
@@ -140,6 +139,8 @@ contract Supply is Appointed, Balance {
 
         balanceOf[reserveBank] -= amount;
         totalSupply -= amount;
+
+        SupplyChanged(-int256(amount));
         Transfer(reserveBank, 0, amount);
     }
 }
@@ -293,7 +294,6 @@ contract Enforcement is Appointed, Balance {
 
 // CryptoFiat defines crypto currency with government regulations
 contract CryptoFiat is
-    Events,
     Appointed,
     Accounts,
     Balance,
