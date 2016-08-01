@@ -61,8 +61,7 @@ contract Accounts is Events, Appointed {
     mapping (address => bool) public closed;
 
     event AccountApproved(address source);
-    event AccountFrozen(address source);
-    event AccountUnfrozen(address source);
+    event AccountFreeze(address source, bool frozen);
     event AccountClosed(address source);
 
     function approveAccount(address account) onlyAccountApprover {
@@ -284,13 +283,13 @@ contract Enforcement is Appointed, Balance {
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
         approved[target] = false;
-        AccountFrozen(target);
+        AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
         approved[target] = true;
-        AccountUnfrozen(target);
+        AccountFreeze(target, false);
     }
 }
 
