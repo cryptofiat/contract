@@ -53,8 +53,6 @@ contract Appointed {
 
 // Accounts defines basic account and capabilities
 contract Accounts is Events, Appointed {
-    // TODO: convert status to an enum instead of having two mappings
-
     // accounts that can send money
     mapping (address => bool) public approved;
     // accounts that cannot receive money
