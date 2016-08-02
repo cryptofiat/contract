@@ -73,11 +73,14 @@ contract Accounts is Appointed {
         if(account == 0) throw;
         _
     }
+    function assertSend(address account) internal canSend(account) {}
+
     modifier canReceive(address account) {
         if(closed[account]) throw;
         if(account == 0) throw;
         _
     }
+    function assertReceive(address account) internal canReceive(account) {}
 }
 
 // Balance defines the balance for Accounts
@@ -90,20 +93,24 @@ contract Balance is Accounts {
         if(balanceOf[account] < amount) throw;
         _
     }
+    function assertFunds(address account, uint256 amount) internal hasFunds(account, amount) {}
 
     function transfer(address destination, uint256 amount)
         canSend(msg.sender)
         hasFunds(msg.sender, amount)
         canReceive(destination)
     {
-        // check for potential overflow
-        if(balanceOf[destination] + amount < balanceOf[destination]) throw;
+        checkOverflow(balanceOf[destination], amount);
 
         address source = msg.sender;
         balanceOf[source] -= amount;
         balanceOf[destination] += amount;
 
         Transfer(source, destination, amount);
+    }
+
+    function checkOverflow(uint256 current, uint256 amount) internal {
+        if(current + amount < current) throw;
     }
 }
 
@@ -119,9 +126,8 @@ contract Supply is Appointed, Balance {
         onlyReserveBank
         canReceive(reserveBank)
     {
-        // check for potential overflow
-        if(balanceOf[reserveBank] + amount < balanceOf[reserveBank]) throw;
-        if(totalSupply + amount < totalSupply) throw;
+        checkOverflow(balanceOf[reserveBank], amount);
+        checkOverflow(totalSupply, amount);
 
         balanceOf[reserveBank] += amount;
         totalSupply += amount;
@@ -179,31 +185,29 @@ contract DelegatedTransfer is Balance {
 
     function delegatedTransfer(
         // transfer request
-        address source, address destination, uint256 amount, uint256 fee,
-        uint256 nonce,
+        uint256 nonce, address destination, uint256 amount, uint256 fee,
         // transfer request signed by source
         bytes signature,
         // whom to pay for fulfilling transfer
         address delegate
     )
-        canSend(source)
-        hasFunds(source, amount + fee)
         canReceive(destination)
         canReceive(delegate)
     {
+        // extract source from signature
+        address source = recoverSigner(
+            sha3(nonce, destination, amount, fee),
+            signature
+        );
+
+        assertSend(source);
+        assertFunds(source, amount + fee);
+
         // protect against replayed transactions
         if(delegatedTransferNonce[source] >= nonce) throw;
 
-        // check for overflow
-        if(balanceOf[destination] + amount < balanceOf[destination]) throw;
-        if(balanceOf[delegate] + fee < balanceOf[delegate]) throw;
-
-        // verify signature
-        address signer = recoverSigner(
-            sha3(source, destination, amount, fee, nonce),
-            signature
-        );
-        if(signer != source) throw;
+        checkOverflow(balanceOf[destination], amount);
+        checkOverflow(balanceOf[delegate], fee);
 
         balanceOf[source] -= amount + fee;
         balanceOf[destination] += amount;
@@ -247,7 +251,7 @@ contract AccountRecovery is Accounts, Balance {
         uint256 amount = balanceOf[from];
 
         // check for overflow
-        if(balanceOf[into] + amount < balanceOf[into]) throw;
+        checkOverflow(balanceOf[into], amount);
 
         balanceOf[from] = 0;
         balanceOf[into] += amount;
@@ -274,8 +278,7 @@ contract Enforcement is Appointed, Balance {
         hasFunds(from, amount)
         canReceive(enforcementAccount)
     {
-        // check for overflow
-        if(balanceOf[enforcementAccount] + amount < balanceOf[enforcementAccount]) throw;
+        checkOverflow(balanceOf[enforcementAccount], amount);
 
         balanceOf[from] -= amount;
         balanceOf[enforcementAccount] += amount;
