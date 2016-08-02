@@ -120,7 +120,7 @@ contract Supply is Appointed, Balance {
     // totalSupply is the total amount of tokens in circulation
     uint256 public totalSupply;
 
-    event SupplyChanged(int256 amount);
+    event SupplyChanged(uint256 totalSupply);
 
     // increaseSupply increases the tokens in circulation
     function increaseSupply(uint256 amount)
@@ -133,8 +133,7 @@ contract Supply is Appointed, Balance {
         deposit(reserveBank, amount);
         Transfer(0, reserveBank, amount);
 
-        //TODO: check for casting issues
-        SupplyChanged(int256(amount));
+        SupplyChanged(totalSupply);
     }
 
     // decreaseSupply decreases the amount of tokens in circulation
@@ -148,8 +147,7 @@ contract Supply is Appointed, Balance {
         withdraw(reserveBank, amount);
         Transfer(reserveBank, 0, amount);
 
-        //TODO: check for casting issues
-        SupplyChanged(-int256(amount));
+        SupplyChanged(totalSupply);
     }
 }
 
