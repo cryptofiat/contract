@@ -89,28 +89,29 @@ contract Balance is Accounts {
 
     event Transfer(address source, address destination, uint256 amount);
 
-    modifier hasFunds(address account, uint256 amount) {
-        if(balanceOf[account] < amount) throw;
-        _
-    }
-    function assertFunds(address account, uint256 amount) internal hasFunds(account, amount) {}
-
     function transfer(address destination, uint256 amount)
         canSend(msg.sender)
-        hasFunds(msg.sender, amount)
         canReceive(destination)
     {
-        checkOverflow(balanceOf[destination], amount);
-
         address source = msg.sender;
-        balanceOf[source] -= amount;
-        balanceOf[destination] += amount;
 
+        withdraw(source, amount);
+        deposit(destination, amount);
         Transfer(source, destination, amount);
     }
 
-    function checkOverflow(uint256 current, uint256 amount) internal {
-        if(current + amount < current) throw;
+    function withdraw(address account, uint256 amount) internal {
+        // check for underflow
+        if(balanceOf[account] < amount) throw;
+
+        balanceOf[account] -= amount;
+    }
+
+    function deposit(address account, uint256 amount) internal {
+        // check for overflow
+        if(balanceOf[account] + amount < balanceOf[account]) throw;
+
+        balanceOf[account] += amount;
     }
 }
 
@@ -126,31 +127,29 @@ contract Supply is Appointed, Balance {
         onlyReserveBank
         canReceive(reserveBank)
     {
-        checkOverflow(balanceOf[reserveBank], amount);
-        checkOverflow(totalSupply, amount);
-
-        balanceOf[reserveBank] += amount;
+        if(totalSupply + amount < totalSupply) throw;
         totalSupply += amount;
+
+        deposit(reserveBank, amount);
+        Transfer(0, reserveBank, amount);
 
         //TODO: check for casting issues
         SupplyChanged(int256(amount));
-        Transfer(0, reserveBank, amount);
     }
 
     // decreaseSupply decreases the amount of tokens in circulation
     function decreaseSupply(uint256 amount)
         onlyReserveBank
         canSend(reserveBank)
-        hasFunds(reserveBank, amount)
     {
         if(totalSupply < amount) throw; // invalid state
-
-        balanceOf[reserveBank] -= amount;
         totalSupply -= amount;
+
+        withdraw(reserveBank, amount);
+        Transfer(reserveBank, 0, amount);
 
         //TODO: check for casting issues
         SupplyChanged(-int256(amount));
-        Transfer(reserveBank, 0, amount);
     }
 }
 
@@ -200,21 +199,18 @@ contract DelegatedTransfer is Balance {
             signature
         );
 
+        // check whether source can send
         assertSend(source);
-        assertFunds(source, amount + fee);
 
         // protect against replayed transactions
         if(delegatedTransferNonce[source] >= nonce) throw;
 
-        checkOverflow(balanceOf[destination], amount);
-        checkOverflow(balanceOf[delegate], fee);
+        withdraw(source, amount + fee);
+        deposit(destination, amount);
 
-        balanceOf[source] -= amount + fee;
-        balanceOf[destination] += amount;
         Transfer(source, destination, amount);
-
         if(fee > 0){
-            balanceOf[delegate] += fee;
+            deposit(delegate, fee);
             Transfer(source, delegate, fee);
         }
     }
@@ -250,11 +246,9 @@ contract AccountRecovery is Accounts, Balance {
 
         uint256 amount = balanceOf[from];
 
-        // check for overflow
-        checkOverflow(balanceOf[into], amount);
+        withdraw(from, amount);
+        deposit(into, amount);
 
-        balanceOf[from] = 0;
-        balanceOf[into] += amount;
         Transfer(from, into, amount);
     }
 }
@@ -275,13 +269,10 @@ contract Enforcement is Appointed, Balance {
     // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
     function enforcedWithdraw(address from, uint256 amount)
         onlyLawEnforcer
-        hasFunds(from, amount)
         canReceive(enforcementAccount)
     {
-        checkOverflow(balanceOf[enforcementAccount], amount);
-
-        balanceOf[from] -= amount;
-        balanceOf[enforcementAccount] += amount;
+        withdraw(from, amount);
+        deposit(enforcementAccount, amount);
         Transfer(from, enforcementAccount, amount);
     }
 
