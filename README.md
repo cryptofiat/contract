@@ -12,14 +12,23 @@ To preserve the public anonymity of the account holders, the transfers are submi
 
 ## Estonia EUR Implementation
 
-* Ethereum contract v 0.41 [commit] (github.com/) - functional
-* account-identity :8485 - supports mobile-ID test certs
-* wallet-server :8485 - reference implementation - not functional
-* wallet-client :8080 - reference implementation - not functional
-* transfer-info :9000 - for storing payment references, sender name, etc (not used yet)
-* parity node : - provides a JSON RPC to ethereum for wallet-server and account-identity
+* Ethereum [contract v 0.41] (https://etherscan.io/tx/0x27374f4e6a21881a03731fc583d9692a39e3c575e5100d6fd56ab92a8f61e898) [(src)] (github.com/) - works functionally, backed by real EUR on reserve account
+* account-identity 54.194.233.151:8080 - approves accounts based on Estonia mobile-ID test certs
+* wallet-server 54.194.234.190:8080 - reference implementation - delegated Transfers not functional
+* wallet-client :9000 - reference implementation - not functional
+* transfer-info 54.194.234.190:8000/ - for storing payment references, sender name, etc (not used yet)
+* parity node :8545 - provides a JSON RPC to ethereum for wallet-server and account-identity
 
-## Visual setup
+![alt visual](eth-eur-0-41.png)
+
+## How to use it
+
+1. Generate a new account in wallet-client
+2. Get the account approved with account-identity using m-ID
+3. Other people with positive EUR balances can now send your account EUR
+4. Use wallet-server to send EUR to other approved accounts
+5. If you have enough ETH on the account to pay for gas, you can transfer EUR directly from any ethereum client
+6. Use the Reserve Bank to convert your EUR on ethereum back to traditional bank-EUR
 
 ## Appointed roles
 
@@ -32,7 +41,7 @@ This institution is expected to hold the real world reserve backing the token cu
 
 ###Account Approver
 A real world institution or an automated service maintained by this institution, which whitelists accounts in the scheme. The Estonian implementation verifies a digital ID card signature. See the documentation.
-* pprove(account)
+* approve(account)
 
 ###Law Enforcement
 Police, courts and possibly other government enforcement agencies need to have the ability to freeze accounts and seize funds. The appointed role is likely a multisignature contract, which can be used to protect against corrupted real world actors.
@@ -44,7 +53,7 @@ Police, courts and possibly other government enforcement agencies need to have t
 
 This role can set the destination of where the appointed law enforcers can seize tokens to. The rationale is to avoid law enforces have access to the funds captured. The real world equivalent would be the court's bank account.
 
-###recoveryAccount
+###Recovery Account
 
 Is set individually by an account holder and may be any account - either a group of friends, a trusted accountholder, a government agency or any 3rd party. 
 
