@@ -12,7 +12,7 @@ To preserve the public anonymity of the account holders, the transfers are submi
 
 ## Estonia EUR Implementation
 
-* Ethereum [contract v 0.41] (https://etherscan.io/tx/0x27374f4e6a21881a03731fc583d9692a39e3c575e5100d6fd56ab92a8f61e898) [(src)] (github.com/) - works functionally, backed by real EUR on reserve account
+* Ethereum [contract v 0.41] (https://etherscan.io/address/0x2fdab8f12fa9ad9ad91fc55d52569afc98be9831) [(src)] (github.com/) - works functionally, backed by real EUR on reserve account
 * account-identity 54.194.233.151:8080 - approves accounts based on Estonia mobile-ID test certs
 * wallet-server 54.194.234.190:8080 - reference implementation - delegated Transfers not functional
 * wallet-client :9000 - reference implementation - not functional
