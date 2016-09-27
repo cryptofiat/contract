@@ -202,6 +202,7 @@ contract DelegatedTransfer is Balance {
 
         // protect against replayed transactions
         if(delegatedTransferNonce[source] >= nonce) throw;
+        delegatedTransferNonce[source] = nonce;
 
         withdraw(source, amount + fee);
         deposit(destination, amount);
