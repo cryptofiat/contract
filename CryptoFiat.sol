@@ -54,24 +54,24 @@ contract Accounts is Appointed {
     uint8 constant Frozen   = 4;
 
     // account state
-    mapping (address => uint8) public state;
+    mapping (address => uint8) public stateOf;
 
-    function isApproved(address account) internal returns (bool) { return state[account] & Approved == Approved; }
-    function isClosed(address account)   internal returns (bool) { return state[account] & Closed   == Closed;   }
-    function isFrozen(address account)   internal returns (bool) { return state[account] & Frozen   == Frozen;   }
+    function isApproved(address account) internal returns (bool) { return stateOf[account] & Approved == Approved; }
+    function isClosed(address account)   internal returns (bool) { return stateOf[account] & Closed   == Closed;   }
+    function isFrozen(address account)   internal returns (bool) { return stateOf[account] & Frozen   == Frozen;   }
 
     event AccountApproved(address source);
     event AccountFreeze(address source, bool frozen);
     event AccountClosed(address source);
 
     function approveAccount(address account) onlyAccountApprover {
-        state[account] |= Approved;
+        stateOf[account] |= Approved;
         AccountApproved(account);
     }
 
     // closeAccount closes the account for receiving money
     function closeAccount(address target) onlyAccountApprover {
-        state[target] |= Closed;
+        stateOf[target] |= Closed;
         AccountClosed(target);
     }
 
@@ -249,7 +249,7 @@ contract AccountRecovery is Accounts, Balance {
         if(msg.sender != recoveryAccountOf[from]) throw;
 
         // close the account
-        state[from] |= Closed;
+        stateOf[from] |= Closed;
         AccountClosed(from);
 
         uint256 amount = balanceOf[from];
@@ -286,13 +286,13 @@ contract Enforcement is Appointed, Balance {
 
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
-        state[target] |= Frozen;
+        stateOf[target] |= Frozen;
         AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
-        state[target] = state[target] & ~Frozen;
+        stateOf[target] = stateOf[target] & ~Frozen;
         AccountFreeze(target, false);
     }
 }
