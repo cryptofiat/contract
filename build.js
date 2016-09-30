@@ -55,13 +55,13 @@ var contracts = {};
 		log += "\tinternal:\n";
 		for (var fn in estimates.internal) {
 			var est = estimates.internal[fn];
-			log += "\t\t" + fn + ": " + (est || "delegated") + "\n";
+			log += "\t\t" + fn + ": " + (est || "???") + "\n";
 		};
 
 		log += "\texternal:\n";
 		for (var fn in estimates.external) {
 			var est = estimates.external[fn];
-			log += "\t\t" + fn + ": " + (est || "delegated") + "\n";
+			log += "\t\t" + fn + ": " + (est || "???") + "\n";
 		};
 
 		fs.writeFileSync(".bin/" + name + ".log", log);

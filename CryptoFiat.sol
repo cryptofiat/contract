@@ -1,332 +1,338 @@
-//
-//
-//
-
-
-
-// Helper Contract: Reserve Bank is an appointed account to be responsible for increasing and decreasing the supply of crypto tokens.
-contract ReserveBank {
+// Appointed defines all appointed roles and specifies how they can be changed
+contract Appointed {
     address public reserveBank;
+    address public lawEnforcer;
+    address public accountApprover;
+    address public enforcementAccountDesignator;
 
-    //Set in constructor, if not overridden
-    function ReserveBank() {
-        reserveBank = msg.sender;
+    modifier onlyReserveBank                   { if(msg.sender != reserveBank) throw; _ }
+    modifier onlyLawEnforcer                   { if(msg.sender != lawEnforcer) throw; _ }
+    modifier onlyAccountApprover               { if(msg.sender != accountApprover) throw; _ }
+    modifier onlyEnforcementAccountDesignator  { if(msg.sender != enforcementAccountDesignator) throw; _ }
+
+    // appoint a new reserve bank
+    // only previous reserve bank
+    function appointReserveBank(address account) onlyReserveBank {
+        if (account == 0) throw;
+        reserveBank = account;
     }
 
-    modifier onlyReserveBank {
-        if (msg.sender != reserveBank) throw;
-        _
-    }
-
-    function appointReserveBank(address newReserveBank)
-        onlyReserveBank
-    {
-        reserveBank = newReserveBank;
-    }
-}
-
-// Helper Contract: Policable implements law enforcement institutions
-contract Policable is ReserveBank {
-    address public lawEnforcer; // account or multisig contract
-    address public accountApprover; // account or multisig contract
-    address public enforcementAccountDesignator; // people, who can reconfigure the destination account
-    address public enforcementAccount; // Account where lawEnforcers can pull money to - e.g. some
-
-    function Policable() {
-        lawEnforcer = msg.sender;
-    }
-
-// Modifiers only to allow actions by appointed accounts
-
-    modifier onlyLawEnforcer {
-        if (msg.sender != lawEnforcer) throw;
-        _
-    }
-
-    modifier onlyAccountApprover {
-        if (msg.sender != accountApprover) throw;
-        _
-    }
-
-    modifier onlyEnforcementAccountDesignator {
-        if (msg.sender != enforcementAccountDesignator) throw;
-        _
-    }
-
-
-// Functions to change the appointed accounts/committees
-
-    function appointLawEnforcer(address newLawEnforcer)
-    {
-        // Allow the reserveBank to set new law enforcement if keys are lost
-        if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
-            lawEnforcer = newLawEnforcer;
-    }
-
-    function appointAccountApprover(address newAccountApprover)
-    {
-        // Allow the reserveBank to set a new account approver if keys are lost
+    // appoint a new account approver
+    // only previous accountApprover or reserveBank
+    function appointAccountApprover(address account) {
+        if (account == 0) throw;
         if (msg.sender != accountApprover && msg.sender != reserveBank) throw;
-            accountApprover = newAccountApprover;
+
+        accountApprover = account;
     }
 
-    function appointEnforcementAccountDesignator(address newEnforcementAccountDesignator)
-    {
-        // Allow the reserveBank to set a new enforcement account designator if keys are lost
+    // appoint a new law enforcement account
+    // only previous lawEnforcer or reserveBank
+    function appointLawEnforcer(address account) {
+        if (account == 0) throw;
+        if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
+
+        lawEnforcer = account;
+    }
+
+    // appoint a new law enforcement account designator
+    // only previous enforcementAccountDesignator or reserveBank
+    function appointEnforcementAccountDesignator(address account) {
+        if (account == 0) throw;
         if (msg.sender != enforcementAccountDesignator && msg.sender != reserveBank) throw;
-            enforcementAccountDesignator = newEnforcementAccountDesignator;
-    }
 
-    // The appointed committee can set the destination account for enforcements by lawEnforcer
-    function designateEnforcementAccount(address target)
-        onlyEnforcementAccountDesignator
-    {
-        //TODO: should also check it is accountApproved and not accountClosed
-        if (target != 0)  {
-            enforcementAccount = target;
-        }
+        accountApprover = account;
     }
-
 }
 
+// Accounts defines basic account and capabilities
+contract Accounts is Appointed {
+    // accounts that can send money
+    mapping (address => bool) public approved;
+    // accounts that cannot receive money
+    mapping (address => bool) public closed;
 
+    event AccountApproved(address source);
+    event AccountFreeze(address source, bool frozen);
+    event AccountClosed(address source);
 
-// Euro2 implements crypto-currency that can be recovered and requires
-// central approval.
-contract CryptoFiat is ReserveBank, Policable {
-    /* Data of the contract */
-    string public standard = 'CryptoFiat 0.4';
-    string public name;
-    string public symbol;
-    uint8  public decimals;
-
-    // tracking total balance
-    uint256 public totalSupply;
-    // tracks balance of a particular account
-    mapping (address => uint256) public balanceOf;
-    // set of approved accounts that can transfer out Euro2 tokens.
-    //Unapproved accounts can still receive tokens, the account holders  can't use them  until they get approved.
-    mapping (address => bool) public approved; // TODO: approved
-    // set of accounts that can not receive tokens
-    mapping (address => bool) public closed; // TODO: closed
-
-    // each address can, optionally, specify a recovery account in case the
-    // original address keys are lost
-    mapping (address => address) public recoveryAccountOf;
-
-    // when using signed transfer it is required to protect against replays of
-    // transfer requests. the nonces used, must be increasing
-    // e.g. use delegatedTransferNonce[sender]++ as the nonce
-    mapping (address => uint256) public delegatedTransferNonce;
-
-
-    // EVENTS
-
-    // Transfer notifies about transfer of tokens
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    // AccountApproved notifies that account has been granted or revoked the right
-    // to transfer tokens
-    event AccountApproved(address account);
-    event AccountFrozen(address account);
-    event AccountUnfrozen(address account);
-    event AccountClosed(address account);
-
-    // Initializes crypto currency with the appropriate initial institutions
-    function CryptoFiat(
-        uint256 initialSupply,
-        string tokenName,
-        uint8 decimalUnits,
-        string tokenSymbol,
-        address _reserveBank,
-        address _accountApprover,
-        address _enforcementAccount,
-        address _enforcementAccountDesignator,
-        address _lawEnforcer
-    ) {
-        // reassign appointed accounts, if specified
-        if(_reserveBank != 0) reserveBank = _reserveBank;
-        if(_lawEnforcer != 0 ) lawEnforcer = _lawEnforcer;
-        if(_accountApprover != 0 ) accountApprover = _accountApprover;
-        if(_enforcementAccount != 0 ) enforcementAccount = _enforcementAccount;
-        if(_enforcementAccountDesignator != 0 ) enforcementAccountDesignator = _enforcementAccountDesignator;
-
-        // starting balance
-        balanceOf[msg.sender] = initialSupply;
-        totalSupply = initialSupply;
-
-        // display information for currency
-        name = tokenName;
-        symbol = tokenSymbol;
-        decimals = decimalUnits;
+    function approveAccount(address account) onlyAccountApprover {
+        //TODO: protect against double approve
+        approved[account] = true;
+        AccountApproved(account);
     }
 
-    // transfer transfers tokens from msg.sender to _to
-    // msg.sender must be approved and have sufficient funds
-    function transfer(address _to, uint256 _amount){
-        // check whether we can transfer from sender
-        if(!approved[msg.sender]) throw;
-        if(balanceOf[msg.sender] < _amount) throw;
-
-        // check whether we can send to the account
-        if(closed[_to]) throw;
-        // check for overflow
-        if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
-
-        balanceOf[msg.sender] -= _amount;
-        balanceOf[_to] += _amount;
-        Transfer(msg.sender, _to, _amount);
-    }
-
-    // delegatedTransfer transfers tokens on behalf of _from,
-    // where _sponser is paid _fee for services
-    //
-    // (v,r,s) is signature of (to, amount, fee, nonce)
-    // signed by _from account.
-    //
-    // from must have amount + fee available for the transfer
-    // nonce must be larger than previous nonce used by that account
-    function delegatedTransfer(
-        // requested transfer
-        address _from, address _to, uint256 _amount, uint256 _fee, uint256 _nonce,
-        // signature of message above signed by _from
-        uint8 sig_v, bytes32 sig_r, bytes32 sig_s,
-        // where to transfer the transaction fee
-        address _delegate
-    ){
-        // check whether we can transfer from sender
-        if(!approved[_from]) throw;
-        if(balanceOf[_from] < _amount + _fee) throw;
-
-        // protect against duplicate transfers
-        if(delegatedTransferNonce[_from] >= _nonce) throw;
-
-        // check whether we can send to the accounts
-        if(closed[_to]) throw;
-        if((_fee > 0) && closed[_delegate]) throw;
-
-        // check for overflow
-        if(balanceOf[_to] + _amount < balanceOf[_to]) throw;
-        if(balanceOf[_delegate] + _fee < balanceOf[_delegate]) throw;
-
-        // verify that the requested transfer is properly signed
-        // TODO: research whether _from field can be removed from the arguments
-        address verify = ecrecover(sha3(_from, _to, _amount, _fee, _nonce), sig_v, sig_r, sig_s);
-        if(verify != _from) throw;
-
-        balanceOf[_from] -= _amount;
-        balanceOf[_to] += _amount;
-        Transfer(_from, _to, _amount);
-
-        if (_fee > 0) {
-            balanceOf[_from] -= _fee;
-            balanceOf[_delegate] += _fee;
-            Transfer(_from, _delegate, _fee);
-        }
-    }
-
-    // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
-    function enforcedWithdraw(address _from, uint256 _amount) onlyLawEnforcer {
-        if(balanceOf[_from] < _amount) throw;
-
-        // check for overflow
-        if(balanceOf[enforcementAccount] + _amount < balanceOf[enforcementAccount]) throw;
-    // check if we can send money to destination
-        if(closed[enforcementAccount]) throw;
-
-        balanceOf[_from] -= _amount;
-        balanceOf[enforcementAccount] += _amount;
-        Transfer(_from, enforcementAccount, _amount);
-    }
-
-    // allows Reserve Bank to issue new tokens to the total supply
-    function increaseSupply(uint256 _amount) onlyReserveBank {
-        if(closed[reserveBank]) throw;
-
-        // check for overflow
-        if(balanceOf[reserveBank] + _amount < balanceOf[reserveBank]) throw;
-
-        balanceOf[reserveBank] += _amount;
-        totalSupply += _amount;
-        Transfer(0, reserveBank, _amount);
-    }
-
-    // allows reserve bank to remove tokens from the total supply
-    function decreaseSupply(uint256 _amount) onlyReserveBank {
-        if(!approved[reserveBank]) throw;
-
-        // check if have enough tokens to burn
-        if(balanceOf[reserveBank] - _amount < 0) throw;
-
-        balanceOf[reserveBank] -= _amount;
-        totalSupply -= _amount;
-        Transfer(reserveBank, 0, _amount);
-    }
-
-    // approveAccount changes target approval status
-    function approveAccount(address target) onlyAccountApprover {
-        //TODO: check if already in map
-        approved[target] = true;
-        AccountApproved(target);
-    }
-
+    // closeAccount closes the account for receiving money
     function closeAccount(address target) onlyAccountApprover {
         closed[target] = true;
         AccountClosed(target);
     }
 
+    modifier canSend(address account) {
+        if(!approved[account]) throw;
+        if(account == 0) throw;
+        _
+    }
+    function assertSend(address account) internal canSend(account) {}
+
+    modifier canReceive(address account) {
+        if(closed[account]) throw;
+        if(account == 0) throw;
+        _
+    }
+    function assertReceive(address account) internal canReceive(account) {}
+}
+
+// Balance defines the balance for Accounts
+contract Balance is Accounts {
+    mapping (address => uint256) public balanceOf;
+
+    event Transfer(address source, address destination, uint256 amount);
+
+    function transfer(address destination, uint256 amount)
+        canSend(msg.sender)
+        canReceive(destination)
+    {
+        address source = msg.sender;
+
+        withdraw(source, amount);
+        deposit(destination, amount);
+        Transfer(source, destination, amount);
+    }
+
+    function withdraw(address account, uint256 amount) internal {
+        // check for underflow
+        if(balanceOf[account] < amount) throw;
+
+        balanceOf[account] -= amount;
+    }
+
+    function deposit(address account, uint256 amount) internal {
+        // check for overflow
+        if(balanceOf[account] + amount < balanceOf[account]) throw;
+
+        balanceOf[account] += amount;
+    }
+}
+
+// Supply defines how tokens are increased/decreased in/from circulation
+contract Supply is Appointed, Balance {
+    // totalSupply is the total amount of tokens in circulation
+    uint256 public totalSupply;
+
+    event SupplyChanged(uint256 totalSupply);
+
+    // increaseSupply increases the tokens in circulation
+    function increaseSupply(uint256 amount)
+        onlyReserveBank
+        canReceive(reserveBank)
+    {
+        if(totalSupply + amount < totalSupply) throw;
+        totalSupply += amount;
+
+        deposit(reserveBank, amount);
+        Transfer(0, reserveBank, amount);
+
+        SupplyChanged(totalSupply);
+    }
+
+    // decreaseSupply decreases the amount of tokens in circulation
+    function decreaseSupply(uint256 amount)
+        onlyReserveBank
+        canSend(reserveBank)
+    {
+        if(totalSupply < amount) throw; // invalid state
+        totalSupply -= amount;
+
+        withdraw(reserveBank, amount);
+        Transfer(reserveBank, 0, amount);
+
+        SupplyChanged(totalSupply);
+    }
+}
+
+// DelegatedTransfer allows a third-party to transfer money on behalf of an account
+contract DelegatedTransfer is Balance {
+    // delegatedTransferNonce protects against using same signed transfer
+    // multiple times
+    mapping (address => uint256) public delegatedTransferNonce;
+
+    function recoverSigner(bytes32 hash, bytes signature)
+        internal
+        returns (address)
+    {
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        if(signature.length != 65) throw;
+
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := and(mload(add(signature, 65)), 255)
+        }
+
+        if(v < 27){
+            v += 27;
+        }
+
+        return ecrecover(hash, v, r, s);
+    }
+
+    function delegatedTransfer(
+        // transfer request
+        uint256 nonce, address destination, uint256 amount, uint256 fee,
+        // transfer request signed by source
+        bytes signature,
+        // whom to pay for fulfilling transfer
+        address delegate
+    )
+        canReceive(destination)
+        canReceive(delegate)
+    {
+        // extract source from signature
+        address source = recoverSigner(
+            sha3(nonce, destination, amount, fee),
+            signature
+        );
+
+        // check whether source can send
+        assertSend(source);
+
+        // protect against replayed transactions
+        if(delegatedTransferNonce[source] >= nonce) throw;
+        delegatedTransferNonce[source] = nonce;
+
+        withdraw(source, amount + fee);
+        deposit(destination, amount);
+
+        Transfer(source, destination, amount);
+        if(fee > 0){
+            deposit(delegate, fee);
+            Transfer(source, delegate, fee);
+        }
+    }
+}
+
+// AccountRecovery specifies mechhanisms for recovering tokens from an account
+contract AccountRecovery is Accounts, Balance {
+    // each account can, optionally, specify a recovery account in case
+    // the original address cannot be accessed due to lost keys
+    mapping (address => address) public recoveryAccountOf;
+
+    // designateRecoveryAccount allows msg.sender to specify a trusted account
+    // that can recover the tokens
+    function designateRecoveryAccount(address recoveryAccount){
+        if(recoveryAccount == 0){
+            delete recoveryAccountOf[msg.sender];
+        } else {
+            recoveryAccountOf[msg.sender] = recoveryAccount;
+        }
+    }
+
+    // recoverBalance allows to recover tokens on a particular account
+    // recovering a balance will automatically close the account
+    function recoverBalance(address from, address into)
+        canSend(from)
+        canReceive(into)
+    {
+        if(msg.sender != recoveryAccountOf[from]) throw;
+
+        // close the account
+        closed[from] = true;
+        AccountClosed(from);
+
+        uint256 amount = balanceOf[from];
+
+        withdraw(from, amount);
+        deposit(into, amount);
+
+        Transfer(from, into, amount);
+    }
+}
+
+// Enforcement allows to freeze/unfreeze accounts
+contract Enforcement is Appointed, Balance {
+    // enforcementAccount defines where all enforced withdraws will be made
+    address public enforcementAccount;
+
+    // designateEnforcementAccount allows changing the enforcementAccount
+    function designateEnforcementAccount(address account)
+        onlyEnforcementAccountDesignator
+        canReceive(account)
+    {
+        enforcementAccount = account;
+    }
+
+    // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
+    function enforcedWithdraw(address from, uint256 amount)
+        onlyLawEnforcer
+        canReceive(enforcementAccount)
+    {
+        withdraw(from, amount);
+        deposit(enforcementAccount, amount);
+        Transfer(from, enforcementAccount, amount);
+    }
+
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
         approved[target] = false;
-        AccountFrozen(target);
+        AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
         approved[target] = true;
-        AccountUnfrozen(target);
+        AccountFreeze(target, false);
+    }
+}
+
+// CryptoFiat defines crypto currency with government regulations
+contract CryptoFiat is
+    Appointed,
+    Accounts,
+    Balance,
+    DelegatedTransfer,
+    Supply,
+    AccountRecovery,
+    Enforcement
+{
+    string public standard = 'CryptoFiat 0.5';
+    string public name;
+    string public symbol;
+    uint8  public decimals = 2;
+
+    function CryptoFiat(
+        string tokenName,
+        string tokenSymbol,
+        uint8  decimalUnits,
+
+        address _reserveBank,
+        address _accountApprover,
+        address _lawEnforcer,
+        address _enforcementAccountDesignator,
+        address _enforcementAccount
+    ) {
+        name = tokenName;
+        symbol = tokenSymbol;
+        decimals = decimalUnits;
+
+        // ensure that appointed accounts are not empty
+        if(_reserveBank == 0) _reserveBank = msg.sender;
+        if(_accountApprover == 0) _accountApprover = msg.sender;
+        if(_lawEnforcer == 0) _lawEnforcer = msg.sender;
+        if(_enforcementAccountDesignator == 0) _enforcementAccountDesignator = msg.sender;
+        if(_enforcementAccount == 0) _enforcementAccount = msg.sender;
+
+        // initialize appointed accounts
+        reserveBank = _reserveBank;
+        accountApprover = _accountApprover;
+        lawEnforcer = _lawEnforcer;
+        enforcementAccountDesignator = _enforcementAccountDesignator;
+        enforcementAccount = _enforcementAccount;
     }
 
-    // designateRecoveryAccount allows an account owner to specify a
-    // trusted party that can retransfer all money to a backup/new account
-    //
-    // if the specified account is 0, the recovery account will be removed
-    function designateRecoveryAccount(address _trusted){
-        if(_trusted == 0) {
-            delete recoveryAccountOf[msg.sender];
-        } else {
-            recoveryAccountOf[msg.sender] = _trusted;
-        }
-    }
-
-    // recoverAccount allows a trusted party to retransfer all money from
-    // a lost account to a new or another account
-    function recoverAccount(address _recover, address _to){
-        // check whether there is the correct recoverer
-        if(msg.sender != recoveryAccountOf[_recover]) throw;
-
-        // check whether we can recover into _to address
-        if(closed[_to]) throw;
-
-        // check whether we can transfer from sender
-        if(!approved[_recover]) throw;
-        closed[_recover] = true;
-        AccountClosed(_recover);
-
-        // get the current balance of the recover account
-        uint256 amount = balanceOf[_recover];
-
-        // check for overflow
-        if(balanceOf[_to] + amount < balanceOf[_to]) throw;
-
-        // move the tokens around
-        balanceOf[_recover] = 0;
-        balanceOf[_to] += amount;
-        Transfer(_recover, _to, amount);
-    }
-
-    /* This unnamed function is called whenever someone tries to send ether to it */
-    function () {
-        throw;     // Prevents accidental sending of ether
-    }
+    // don't allow sending ether to the contract
+    function() { throw; }
 }
