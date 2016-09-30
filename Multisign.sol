@@ -1,3 +1,5 @@
+pragma solidity ^0.4.2;
+
 // Multi-sig account proxy for institutionals like central mint, law enforcement.
 // Adapted from https://github.com/ethereum/dapp-bin/blob/master/wallet/wallet.sol
 // usage:
@@ -37,11 +39,11 @@ contract multiowned {
     // simple single-sig function modifier.
     modifier onlyowner {
         if (isOwner(msg.sender))
-            _
+        _ ;
     }
     modifier onlymanyowners(bytes32 _operation) {
         if (confirmAndCheck(_operation))
-            _
+        _ ;
     }
 
 	// METHODS
@@ -59,7 +61,7 @@ contract multiowned {
         }
         m_required = _required;
     }
-    
+
     // Revokes a prior confirmation of the given operation
     function revoke(bytes32 _operation) external {
         uint ownerIndex = m_ownerIndex[uint(msg.sender)];
@@ -73,7 +75,7 @@ contract multiowned {
             Revoke(msg.sender, _operation);
         }
     }
-    
+
     // Replaces an owner `_from` with another `_to`.
     function changeOwner(address _from, address _to) onlymanyowners(sha3(msg.data)) external {
         if (isOwner(_to)) return;
@@ -86,7 +88,7 @@ contract multiowned {
         m_ownerIndex[uint(_to)] = ownerIndex;
         OwnerChanged(_from, _to);
     }
-    
+
     function addOwner(address _owner) onlymanyowners(sha3(msg.data)) external {
         if (isOwner(_owner)) return;
 
@@ -100,7 +102,7 @@ contract multiowned {
         m_ownerIndex[uint(_owner)] = m_numOwners;
         OwnerAdded(_owner);
     }
-    
+
     function removeOwner(address _owner) onlymanyowners(sha3(msg.data)) external {
         uint ownerIndex = m_ownerIndex[uint(_owner)];
         if (ownerIndex == 0) return;
@@ -112,18 +114,18 @@ contract multiowned {
         reorganizeOwners(); //make sure m_numOwner is equal to the number of owners and always points to the optimal free slot
         OwnerRemoved(_owner);
     }
-    
+
     function changeRequirement(uint _newRequired) onlymanyowners(sha3(msg.data)) external {
         if (_newRequired > m_numOwners) return;
         m_required = _newRequired;
         clearPending();
         RequirementChanged(_newRequired);
     }
-    
+
     function isOwner(address _addr) returns (bool) {
         return m_ownerIndex[uint(_addr)] > 0;
     }
-    
+
     function hasConfirmed(bytes32 _operation, address _owner) constant returns (bool) {
         var pending = m_pending[_operation];
         uint ownerIndex = m_ownerIndex[uint(_owner)];
@@ -135,7 +137,7 @@ contract multiowned {
         uint ownerIndexBit = 2**ownerIndex;
         return !(pending.ownersDone & ownerIndexBit == 0);
     }
-    
+
     // INTERNAL METHODS
 
     function confirmAndCheck(bytes32 _operation) internal returns (bool) {
@@ -189,7 +191,7 @@ contract multiowned {
             }
         }
     }
-    
+
     function clearPending() internal {
         uint length = m_pendingIndex.length;
         for (uint i = 0; i < length; ++i)
@@ -197,14 +199,14 @@ contract multiowned {
                 delete m_pending[m_pendingIndex[i]];
         delete m_pendingIndex;
     }
-        
+
    	// FIELDS
 
     // the number of owners that must confirm the same operation before it is run.
     uint public m_required;
     // pointer used to find a free slot in m_owners
     uint public m_numOwners;
-    
+
     // list of owners
     uint[256] m_owners;
     uint constant c_maxOwners = 250;
@@ -228,9 +230,9 @@ contract multisig {
     event MultiTransact(address owner, bytes32 operation, uint value, address to, bytes data);
     // Confirmation still needed for a transaction.
     event ConfirmationNeeded(bytes32 operation, address initiator, uint value, address to, bytes data);
-    
+
     // FUNCTIONS
-    
+
     // TODO: document
     function changeOwner(address _from, address _to) external;
     function execute(address _to, uint _value, bytes _data) external returns (bytes32);
@@ -258,19 +260,19 @@ contract Wallet is multisig, multiowned {
     function Wallet(address[] _owners, uint _required)
             multiowned(_owners, _required) {
     }
-    
+
     // kills the contract sending everything to `_to`.
     function kill(address _to) onlymanyowners(sha3(msg.data)) external {
         suicide(_to);
     }
-    
+
     // gets called when no other function matches
     function() {
         // just being sent some cash?
         if (msg.value > 0)
             Deposit(msg.sender, msg.value);
     }
-    
+
     // Outside-visible transact entry point.
     // We provide a hash on return to allow the sender to provide
     // shortcuts for the other confirmations (allowing them to avoid replicating the _to, _value
@@ -285,7 +287,7 @@ contract Wallet is multisig, multiowned {
             ConfirmationNeeded(_r, msg.sender, _value, _to, _data);
         }
     }
-    
+
     // confirm a transaction through just the hash. we use the previous transactions map, m_txs, in order
     // to determine the body of the transaction from the hash provided.
     function confirm(bytes32 _h) onlymanyowners(_h) returns (bool) {
@@ -296,9 +298,9 @@ contract Wallet is multisig, multiowned {
             return true;
         }
     }
-    
+
     // INTERNAL METHODS
-    
+
     function clearPending() internal {
         uint length = m_pendingIndex.length;
         for (uint i = 0; i < length; ++i)

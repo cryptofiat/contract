@@ -1,3 +1,5 @@
+pragma solidity ^0.4.2;
+
 // Appointed defines all appointed roles and specifies how they can be changed
 contract Appointed {
     address public reserveBank;
@@ -5,10 +7,10 @@ contract Appointed {
     address public accountApprover;
     address public enforcementAccountDesignator;
 
-    modifier onlyReserveBank                   { if(msg.sender != reserveBank) throw; _ }
-    modifier onlyLawEnforcer                   { if(msg.sender != lawEnforcer) throw; _ }
-    modifier onlyAccountApprover               { if(msg.sender != accountApprover) throw; _ }
-    modifier onlyEnforcementAccountDesignator  { if(msg.sender != enforcementAccountDesignator) throw; _ }
+    modifier onlyReserveBank                   { if(msg.sender != reserveBank) throw; _ ; }
+    modifier onlyLawEnforcer                   { if(msg.sender != lawEnforcer) throw; _ ; }
+    modifier onlyAccountApprover               { if(msg.sender != accountApprover) throw; _ ; }
+    modifier onlyEnforcementAccountDesignator  { if(msg.sender != enforcementAccountDesignator) throw; _ ; }
 
     // appoint a new reserve bank
     // only previous reserve bank
@@ -78,14 +80,14 @@ contract Accounts is Appointed {
         if(isFrozen(account)) throw;
 
         if(account == 0) throw;
-        _
+        _ ;
     }
     function assertSend(address account) internal canSend(account) {}
 
     modifier canReceive(address account) {
         if(isClosed(account)) throw;
         if(account == 0) throw;
-        _
+        _ ;
     }
     function assertReceive(address account) internal canReceive(account) {}
 }
