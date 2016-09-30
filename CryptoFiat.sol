@@ -57,7 +57,6 @@ contract Accounts is Appointed {
     event AccountClosed(address source);
 
     function approveAccount(address account) onlyAccountApprover {
-        //TODO: protect against double approve
         approved[account] = true;
         AccountApproved(account);
     }
