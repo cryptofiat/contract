@@ -47,35 +47,43 @@ contract Appointed {
 
 // Accounts defines basic account and capabilities
 contract Accounts is Appointed {
-    // accounts that can send money
-    mapping (address => bool) public approved;
-    // accounts that cannot receive money
-    mapping (address => bool) public closed;
+    uint8 constant Approved = 1;
+    uint8 constant Closed   = 2;
+    uint8 constant Frozen   = 4;
+
+    // account state
+    mapping (address => uint8) public state;
+
+    function isApproved(address account) internal returns (bool) { return state[account] & Approved == Approved; }
+    function isClosed(address account)   internal returns (bool) { return state[account] & Closed   == Closed;   }
+    function isFrozen(address account)   internal returns (bool) { return state[account] & Frozen   == Frozen;   }
 
     event AccountApproved(address source);
     event AccountFreeze(address source, bool frozen);
     event AccountClosed(address source);
 
     function approveAccount(address account) onlyAccountApprover {
-        approved[account] = true;
+        state[account] |= Approved;
         AccountApproved(account);
     }
 
     // closeAccount closes the account for receiving money
     function closeAccount(address target) onlyAccountApprover {
-        closed[target] = true;
+        state[target] |= Closed;
         AccountClosed(target);
     }
 
     modifier canSend(address account) {
-        if(!approved[account]) throw;
+        if(!isApproved(account)) throw;
+        if(isFrozen(account)) throw;
+
         if(account == 0) throw;
         _
     }
     function assertSend(address account) internal canSend(account) {}
 
     modifier canReceive(address account) {
-        if(closed[account]) throw;
+        if(isClosed(account)) throw;
         if(account == 0) throw;
         _
     }
@@ -239,7 +247,7 @@ contract AccountRecovery is Accounts, Balance {
         if(msg.sender != recoveryAccountOf[from]) throw;
 
         // close the account
-        closed[from] = true;
+        state[from] |= Closed;
         AccountClosed(from);
 
         uint256 amount = balanceOf[from];
@@ -276,13 +284,13 @@ contract Enforcement is Appointed, Balance {
 
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
-        approved[target] = false;
+        state[target] |= Frozen;
         AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
-        approved[target] = true;
+        state[target] = state[target] & ~Frozen;
         AccountFreeze(target, false);
     }
 }
