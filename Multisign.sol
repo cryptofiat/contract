@@ -1,4 +1,4 @@
-pragma solidity ^0.4.2;
+pragma solidity ^0.4.0;
 
 // Multi-sig account proxy for institutionals like central mint, law enforcement.
 // Adapted from https://github.com/ethereum/dapp-bin/blob/master/wallet/wallet.sol

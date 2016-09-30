@@ -1,4 +1,4 @@
-pragma solidity ^0.4.2;
+pragma solidity ^0.4.0;
 
 // Appointed defines all appointed roles and specifies how they can be changed
 contract Appointed {
