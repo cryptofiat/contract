@@ -7,151 +7,125 @@ contract CryptoFiat {
         _ ;
     }
 
-    address public data;
-    address public logic;
+    mapping(bytes32 => address) public contracts;
+    mapping(address => uint256) public approved;
 
     function CryptoFiat(){
         masterAccount = msg.sender;
     }
 
     function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
-    function upgradeData(address next) onlyMasterAccount { data = next; }
-    function upgradeLogic(address next) onlyMasterAccount { logic = next; }
 
-    function () {
-        if(!logic.delegatecall(msg.data)) throw;
+    function upgrade(bytes32 id, address next) {
+        address prev = contracts[id];
+        // message sender or the previous contract
+        bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
+        if(!canUpgrade) throw;
+
+        if(prev != 0) approved[prev] -= 1;
+        contracts[id] = next;
+        if(next != 0) approved[next] += 1;
     }
 }
 
-contract Relay {
-    address relay;
+contract Constants {
+    // contracts
+    bytes32 constant DATA             = 0;
+    bytes32 constant ACCOUNTS         = 1;
+    bytes32 constant APPROVING        = 2;
+    bytes32 constant RESERVE          = 3;
+    bytes32 constant ENFORCEMENT      = 4;
+    bytes32 constant ACCOUNT_RECOVERY = 5;
+    bytes32 constant DELEGATION       = 6;
 
-    modifier onlyLogic {
-        address logic = CryptoFiat(relay).logic();
-        if(msg.sender != logic) throw;
+    // data
+    bytes32 constant BALANCE                  = 1;
+    bytes32 constant STATE                    = 2;
+    bytes32 constant DELEGATED_TRANSFER_NONCE = 3;
+    bytes32 constant RECOVERY_ACCOUNT         = 4;
+    bytes32 constant TOTAL_SUPPLY             = 5;
+
+    // account states
+    uint256 constant APPROVED = 1;
+    uint256 constant CLOSED   = 2;
+    uint256 constant FROZEN   = 4;
+
+    // events
+    event Transfer(address indexed source, address indexed destination, uint256 amount);
+
+    event AccountApproved(address indexed source);
+    event AccountClosed(address indexed source);
+    event AccountFreeze(address indexed source, bool frozen);
+
+    event SupplyChanged(uint256 totalSupply);
+}
+
+contract Relay is Constants {
+    address cryptoFiat;
+
+    modifier onlyContracts {
+        if(CryptoFiat(cryptoFiat).approved(msg.sender) <= 0) throw;
         _;
     }
 
-    function data()  internal returns (Storage)         { return Storage(CryptoFiat(relay).data()); }
-    function logic() internal returns (CryptoFiatLogic) { return CryptoFiatLogic(CryptoFiat(relay).logic()); }
+    function contractFor(bytes32 id) internal returns (address) { return CryptoFiat(cryptoFiat).contracts(id); }
+
+    function data() internal returns (Data) { return Data(contractFor(DATA)); }
+    function accounts() internal returns (Accounts) { return Accounts(contractFor(ACCOUNTS)); }
+    function approving() internal returns (Approving) { return Approving(contractFor(APPROVING)); }
+    function reserve() internal returns (Reserve) { return Reserve(contractFor(RESERVE)); }
+    function enforcement() internal returns (Enforcement) { return Enforcement(contractFor(ENFORCEMENT)); }
+    function accountRecovery() internal returns (AccountRecovery) { return AccountRecovery(contractFor(ACCOUNT_RECOVERY)); }
+    function delegation() internal returns (Delegation) { return Delegation(contractFor(DELEGATION)); }
 }
 
-contract Storage is Relay {
+contract Data is Relay {
+    function Data(address _cryptoFiat) {
+        cryptoFiat = _cryptoFiat;
+    }
+
     mapping(bytes32 => bytes32) private data;
 
     function set(bytes32 context, bytes32 key, bytes32 value)
-        onlyLogic
+        onlyContracts
     {
         data[sha3(context, key)] = value;
     }
 
     function get(bytes32 context, bytes32 key)
-        onlyLogic
+        onlyContracts
         returns (bytes32)
     {
         return data[sha3(context, key)];
     }
 }
 
-contract ExternalStorage is Relay {
-    bytes32 constant BALANCE = 1;
-    bytes32 constant STATE = 2;
-    bytes32 constant DELEGATED_TRANSFER_NONCE = 3;
-    bytes32 constant RECOVERY_ACCOUNT = 4;
-    bytes32 constant TOTAL_SUPPLY = 5;
 
+contract InternalData is Constants, Relay {
     // balance contains the balance of an account
-    function balanceOf(address addr) returns (uint256) { return uint256(data().get(BALANCE, bytes32(addr))); }
-    function setBalanceOf(address addr, uint256 value) internal { data().set(BALANCE, bytes32(addr), bytes32(value)); }
+    function _balanceOf(address addr) internal returns (uint256) { return uint256(data().get(BALANCE, bytes32(addr))); }
+    function _setBalanceOf(address addr, uint256 value) internal { data().set(BALANCE, bytes32(addr), bytes32(value)); }
 
     // state contains the current state of an account
-    function stateOf(address addr) returns (uint256) { return uint256(data().get(STATE, bytes32(addr))); }
-    function setStateOf(address addr, uint256 value) internal { data().set(STATE, bytes32(addr), bytes32(value)); }
+    function _stateOf(address addr) internal returns (uint256) { return uint256(data().get(STATE, bytes32(addr))); }
+    function _setStateOf(address addr, uint256 value) internal { data().set(STATE, bytes32(addr), bytes32(value)); }
 
     // delegated trancfer nonce contains the last nonce used in delegatedTransfer
-    function delegatedTransferNonceOf(address addr) returns (uint256) { return uint256(data().get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
-    function setDelegatedTransferNonceOf(address addr, uint256 value) internal { data().set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
+    function _delegatedTransferNonceOf(address addr) internal returns (uint256) { return uint256(data().get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
+    function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data().set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
 
     // recovery account contains a fallback account that can be used to recover funds
-    function recoveryAccountOf(address addr) returns (address) { return address(data().get(RECOVERY_ACCOUNT, bytes32(addr))); }
-    function setRecoveryAccountOf(address addr, address value) internal { data().set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
+    function _recoveryAccountOf(address addr) internal returns (address) { return address(data().get(RECOVERY_ACCOUNT, bytes32(addr))); }
+    function _setRecoveryAccountOf(address addr, address value) internal { data().set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
 
     // totalSupply is the total amount of tokens in circulation
-    function totalSupply() returns (uint256) { return uint256(data().get(TOTAL_SUPPLY, bytes32(0))); }
-    function setTotalSupply(uint256 value) internal { data().set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
-}
+    function _totalSupply() internal returns (uint256) { return uint256(data().get(TOTAL_SUPPLY, bytes32(0))); }
+    function _setTotalSupply(uint256 value) internal { data().set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
 
-// Appointed defines all appointed roles and specifies how they can be changed
-contract Appointed {
-    address public reserveBank;
-    address public lawEnforcer;
-    address public accountApprover;
-    address public enforcementAccountDesignator;
-
-    modifier onlyReserveBank                   { if(msg.sender != reserveBank) throw; _ ; }
-    modifier onlyLawEnforcer                   { if(msg.sender != lawEnforcer) throw; _ ; }
-    modifier onlyAccountApprover               { if(msg.sender != accountApprover) throw; _ ; }
-    modifier onlyEnforcementAccountDesignator  { if(msg.sender != enforcementAccountDesignator) throw; _ ; }
-
-    // appoint a new reserve bank
-    // only previous reserve bank
-    function appointReserveBank(address account) onlyReserveBank {
-        if (account == 0) throw;
-        reserveBank = account;
-    }
-
-    // appoint a new account approver
-    // only previous accountApprover or reserveBank
-    function appointAccountApprover(address account) {
-        if (account == 0) throw;
-        if (msg.sender != accountApprover && msg.sender != reserveBank) throw;
-
-        accountApprover = account;
-    }
-
-    // appoint a new law enforcement account
-    // only previous lawEnforcer or reserveBank
-    function appointLawEnforcer(address account) {
-        if (account == 0) throw;
-        if (msg.sender != lawEnforcer && msg.sender != reserveBank) throw;
-
-        lawEnforcer = account;
-    }
-
-    // appoint a new law enforcement account designator
-    // only previous enforcementAccountDesignator or reserveBank
-    function appointEnforcementAccountDesignator(address account) {
-        if (account == 0) throw;
-        if (msg.sender != enforcementAccountDesignator && msg.sender != reserveBank) throw;
-
-        accountApprover = account;
-    }
-}
-
-// Accounts defines basic account and capabilities
-contract Accounts is ExternalStorage, Appointed {
-    uint8 constant APPROVED = 1;
-    uint8 constant CLOSED   = 2;
-    uint8 constant FROZEN   = 4;
-
-    function isApproved(address account) internal returns (bool) { return stateOf(account) & APPROVED == APPROVED; }
-    function isClosed(address account)   internal returns (bool) { return stateOf(account) & CLOSED   == CLOSED;   }
-    function isFrozen(address account)   internal returns (bool) { return stateOf(account) & FROZEN   == FROZEN;   }
-
-    event AccountApproved(address indexed source);
-    event AccountFreeze(address indexed source, bool frozen);
-    event AccountClosed(address indexed source);
-
-    function approveAccount(address account) onlyAccountApprover {
-        setStateOf(account, stateOf(account) | APPROVED);
-        AccountApproved(account);
-    }
-
-    // closeAccount closes the account for receiving money
-    function closeAccount(address account) onlyAccountApprover {
-        setStateOf(account, stateOf(account) | CLOSED);
-        AccountClosed(account);
-    }
+    // for checking account status
+    function isApproved(address account) internal returns (bool) { return _stateOf(account) & APPROVED == APPROVED; }
+    function isClosed(address account)   internal returns (bool) { return _stateOf(account) & CLOSED   == CLOSED;   }
+    function isFrozen(address account)   internal returns (bool) { return _stateOf(account) & FROZEN   == FROZEN;   }
 
     modifier canSend(address account) {
         if(!isApproved(account)) throw;
@@ -168,11 +142,31 @@ contract Accounts is ExternalStorage, Appointed {
         _ ;
     }
     function assertReceive(address account) internal canReceive(account) {}
+
+    // internal modification of balance
+    function _withdraw(address account, uint256 amount) internal {
+        // check for underflow
+        uint256 balance = _balanceOf(account);
+        if(balance < amount) throw;
+        _setBalanceOf(account, balance - amount);
+    }
+
+    function _deposit(address account, uint256 amount) internal {
+        // check for overflow
+        uint256 balance = _balanceOf(account);
+        if(balance + amount < balance) throw;
+        _setBalanceOf(account, balance + amount);
+    }
 }
 
-// Balance defines the balance for Accounts
-contract Balance is ExternalStorage, Accounts {
-    event Transfer(address indexed source, address indexed destination, uint256 amount);
+contract Accounts is InternalData {
+    function Accounts(address _cryptoFiat){
+        cryptoFiat = _cryptoFiat;
+    }
+
+    // balance contains the balance of an account
+    function balanceOf(address addr) returns (uint256) { return _balanceOf(addr); }
+    function stateOf(address addr) returns (uint256) { return _stateOf(addr); }
 
     function transfer(address destination, uint256 amount)
         canSend(msg.sender)
@@ -180,29 +174,43 @@ contract Balance is ExternalStorage, Accounts {
     {
         address source = msg.sender;
 
-        withdraw(source, amount);
-        deposit(destination, amount);
+        _withdraw(source, amount);
+        _deposit(destination, amount);
         Transfer(source, destination, amount);
-    }
-
-    function withdraw(address account, uint256 amount) internal {
-        // check for underflow
-        uint256 balance = balanceOf(account);
-        if(balance < amount) throw;
-        setBalanceOf(account, balance - amount);
-    }
-
-    function deposit(address account, uint256 amount) internal {
-        // check for overflow
-        uint256 balance = balanceOf(account);
-        if(balance + amount < balance) throw;
-        setBalanceOf(account, balance + amount);
     }
 }
 
-// Supply defines how tokens are increased/decreased in/from circulation
-contract Supply is ExternalStorage, Appointed, Balance {
-    event SupplyChanged(uint256 totalSupply);
+contract Approving is InternalData {
+    address public accountApprover;
+    function Approving(address _cryptoFiat, address _accountApprover){
+        cryptoFiat = _cryptoFiat;
+        accountApprover = _accountApprover;
+    }
+    modifier onlyAccountApprover { if(msg.sender != accountApprover) throw; _ ; }
+
+    // approveAccount makes it possible for an account to send money
+    function approveAccount(address account) onlyAccountApprover {
+        _setStateOf(account, _stateOf(account) | APPROVED);
+        AccountApproved(account);
+    }
+
+    // closeAccount closes the account for receiving money
+    function closeAccount(address account) onlyAccountApprover {
+        _setStateOf(account, _stateOf(account) | CLOSED);
+        AccountClosed(account);
+    }
+}
+
+
+contract Reserve is InternalData {
+    address public reserveBank;
+    function Reserve(address _cryptoFiat, address _reserveBank){
+        cryptoFiat = _cryptoFiat;
+        reserveBank = _reserveBank;
+    }
+    modifier onlyReserveBank { if(msg.sender != reserveBank) throw; _ ; }
+
+    function totalSupply() returns (uint256) { return _totalSupply(); }
 
     // increaseSupply increases the tokens in circulation
     function increaseSupply(uint256 amount)
@@ -212,9 +220,9 @@ contract Supply is ExternalStorage, Appointed, Balance {
         uint256 supply = totalSupply();
         if(supply + amount < supply) throw;
         supply += amount;
-        setTotalSupply(supply);
+        _setTotalSupply(supply);
 
-        deposit(reserveBank, amount);
+        _deposit(reserveBank, amount);
         Transfer(0, reserveBank, amount);
 
         SupplyChanged(supply);
@@ -225,20 +233,105 @@ contract Supply is ExternalStorage, Appointed, Balance {
         onlyReserveBank
         canSend(reserveBank)
     {
-        uint256 supply = totalSupply();
+        uint256 supply = _totalSupply();
         if(supply < amount) throw; // invalid state
         supply -= amount;
-        setTotalSupply(supply);
+        _setTotalSupply(supply);
 
-        withdraw(reserveBank, amount);
+        _withdraw(reserveBank, amount);
         Transfer(reserveBank, 0, amount);
 
         SupplyChanged(supply);
     }
 }
 
-// DelegatedTransfer allows a third-party to transfer money on behalf of an account
-contract DelegatedTransfer is ExternalStorage, Balance {
+
+contract Enforcement is InternalData {
+    address public lawEnforcer;
+
+    address public accountDesignator;
+    address public account;
+
+    function Enforcement(address _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount){
+        cryptoFiat = _cryptoFiat;
+        lawEnforcer = _lawEnforcer;
+
+        accountDesignator = _enforcementAccountDesignator;
+        account = _enforcementAccount;
+    }
+    modifier onlyLawEnforcer { if(msg.sender != lawEnforcer) throw; _ ; }
+    modifier onlyAccountDesignator { if(msg.sender != accountDesignator) throw; _ ; }
+
+    // withdraw allows law enforcerer to withdraw to a dedicated account
+    function withdraw(address from, uint256 amount)
+        onlyLawEnforcer
+        canReceive(account)
+    {
+        _withdraw(from, amount);
+        _deposit(account, amount);
+        Transfer(from, account, amount);
+    }
+
+    // freezeAccount disallows account to send money
+    function freezeAccount(address target) onlyLawEnforcer {
+        _setStateOf(target, _stateOf(target) | FROZEN);
+        AccountFreeze(target, true);
+    }
+
+    // unfreezeAccount re-allows account to send money
+    function unfreezeAccount(address target) onlyLawEnforcer {
+        _setStateOf(target, _stateOf(target) & ~FROZEN);
+        AccountFreeze(target, false);
+    }
+
+    // designateAccount allows changing the account
+    function designateAccount(address account)
+        onlyAccountDesignator
+        canReceive(account)
+    {
+        account = account;
+    }
+}
+
+contract AccountRecovery is InternalData {
+    function AccountRecovery(address _cryptoFiat){
+        cryptoFiat = _cryptoFiat;
+    }
+
+    // designateRecoveryAccount allows msg.sender to specify a trusted account
+    // that can recover the tokens
+    function designateRecoveryAccount(address recoveryAccount){
+        _setRecoveryAccountOf(msg.sender, recoveryAccount);
+    }
+
+    // recoverBalance allows to recover tokens on a particular account
+    // recovering a balance will automatically close the account
+    function recoverBalance(address from, address into)
+        canSend(from)
+        canReceive(into)
+    {
+        if(msg.sender != _recoveryAccountOf(from)) throw;
+
+        // close the account
+        _setStateOf(from, _stateOf(from) | CLOSED);
+        AccountClosed(from);
+
+        uint256 amount = _balanceOf(from);
+
+        _withdraw(from, amount);
+        _deposit(into, amount);
+
+        Transfer(from, into, amount);
+    }
+}
+
+contract Delegation is InternalData {
+    function Delegation(address _cryptoFiat){
+        cryptoFiat = _cryptoFiat;
+    }
+
+    function delegatedTransferNonceOf(address account) returns (uint256) { return _delegatedTransferNonceOf(account); }
+
     function recoverSigner(bytes32 hash, bytes signature)
         internal
         returns (address)
@@ -284,130 +377,16 @@ contract DelegatedTransfer is ExternalStorage, Balance {
 
         // protect against replayed transactions
 
-        if(delegatedTransferNonceOf(source) >= nonce) throw;
-        setDelegatedTransferNonceOf(source, nonce);
+        if(_delegatedTransferNonceOf(source) >= nonce) throw;
+        _setDelegatedTransferNonceOf(source, nonce);
 
-        withdraw(source, amount + fee);
-        deposit(destination, amount);
+        _withdraw(source, amount + fee);
+        _deposit(destination, amount);
 
         Transfer(source, destination, amount);
         if(fee > 0){
-            deposit(delegate, fee);
+            _deposit(delegate, fee);
             Transfer(source, delegate, fee);
         }
     }
-}
-
-// AccountRecovery specifies mechhanisms for recovering tokens from an account
-contract AccountRecovery is ExternalStorage, Accounts, Balance {
-    // designateRecoveryAccount allows msg.sender to specify a trusted account
-    // that can recover the tokens
-    function designateRecoveryAccount(address recoveryAccount){
-        setRecoveryAccountOf(msg.sender, recoveryAccount);
-    }
-
-    // recoverBalance allows to recover tokens on a particular account
-    // recovering a balance will automatically close the account
-    function recoverBalance(address from, address into)
-        canSend(from)
-        canReceive(into)
-    {
-        if(msg.sender != recoveryAccountOf(from)) throw;
-
-        // close the account
-        setStateOf(from, stateOf(from) | CLOSED);
-        AccountClosed(from);
-
-        uint256 amount = balanceOf(from);
-
-        withdraw(from, amount);
-        deposit(into, amount);
-
-        Transfer(from, into, amount);
-    }
-}
-
-// Enforcement allows to freeze/unfreeze accounts
-contract Enforcement is Appointed, Balance {
-    // enforcementAccount defines where all enforced withdraws will be made
-    address public enforcementAccount;
-
-    // designateEnforcementAccount allows changing the enforcementAccount
-    function designateEnforcementAccount(address account)
-        onlyEnforcementAccountDesignator
-        canReceive(account)
-    {
-        enforcementAccount = account;
-    }
-
-    // enforcedWithdraw allows law enforcerer to withdraw to a dedicated account
-    function enforcedWithdraw(address from, uint256 amount)
-        onlyLawEnforcer
-        canReceive(enforcementAccount)
-    {
-        withdraw(from, amount);
-        deposit(enforcementAccount, amount);
-        Transfer(from, enforcementAccount, amount);
-    }
-
-    // freezeAccount disallows account to send money
-    function freezeAccount(address target) onlyLawEnforcer {
-        setStateOf(target, stateOf(target) | FROZEN);
-        AccountFreeze(target, true);
-    }
-
-    // unfreezeAccount re-allows account to send money
-    function unfreezeAccount(address target) onlyLawEnforcer {
-        setStateOf(target, stateOf(target) & ~FROZEN);
-        AccountFreeze(target, false);
-    }
-}
-
-// CryptoFiat defines crypto currency with government regulations
-contract CryptoFiatLogic is
-    Appointed,
-    Accounts,
-    Balance,
-    DelegatedTransfer,
-    Supply,
-    AccountRecovery,
-    Enforcement
-{
-    string public standard = 'CryptoFiat 0.5';
-    string public name;
-    string public symbol;
-    uint8  public decimals = 2;
-
-    function CryptoFiatLogic(
-        string tokenName,
-        string tokenSymbol,
-        uint8  decimalUnits,
-
-        address _reserveBank,
-        address _accountApprover,
-        address _lawEnforcer,
-        address _enforcementAccountDesignator,
-        address _enforcementAccount
-    ) {
-        name = tokenName;
-        symbol = tokenSymbol;
-        decimals = decimalUnits;
-
-        // ensure that appointed accounts are not empty
-        if(_reserveBank == 0) _reserveBank = msg.sender;
-        if(_accountApprover == 0) _accountApprover = msg.sender;
-        if(_lawEnforcer == 0) _lawEnforcer = msg.sender;
-        if(_enforcementAccountDesignator == 0) _enforcementAccountDesignator = msg.sender;
-        if(_enforcementAccount == 0) _enforcementAccount = msg.sender;
-
-        // initialize appointed accounts
-        reserveBank = _reserveBank;
-        accountApprover = _accountApprover;
-        lawEnforcer = _lawEnforcer;
-        enforcementAccountDesignator = _enforcementAccountDesignator;
-        enforcementAccount = _enforcementAccount;
-    }
-
-    // don't allow sending ether to the contract
-    function() { throw; }
 }
