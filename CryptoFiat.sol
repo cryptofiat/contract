@@ -196,6 +196,13 @@ contract Approving is InternalData {
         AccountApproved(account);
     }
 
+    // approveAccounts approves multiple accounts
+    function approveAccounts(address[] accounts) {
+        for(uint i = 0; i < accounts.length; i += 1){
+            approveAccount(accounts[i]);
+        }
+    }
+
     // closeAccount closes the account for receiving money
     function closeAccount(address account) onlyAccountApprover {
         _setStateOf(account, _stateOf(account) | CLOSED);
