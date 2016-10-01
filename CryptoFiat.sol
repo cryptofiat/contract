@@ -189,6 +189,9 @@ contract Approving is InternalData {
         accountApprover = _accountApprover;
     }
     modifier onlyAccountApprover { if(msg.sender != accountApprover) throw; _ ; }
+    function appointAccountApprover(address next) onlyAccountApprover {
+        accountApprover = next;
+    }
 
     // approveAccount makes it possible for an account to send money
     function approveAccount(address account) onlyAccountApprover {
@@ -218,6 +221,7 @@ contract Reserve is InternalData {
         reserveBank = _reserveBank;
     }
     modifier onlyReserveBank { if(msg.sender != reserveBank) throw; _ ; }
+    function appointReserveBank(address next) onlyReserveBank { reserveBank = next; }
 
     function totalSupply() returns (uint256) { return _totalSupply(); }
 
@@ -270,6 +274,9 @@ contract Enforcement is InternalData {
     }
     modifier onlyLawEnforcer { if(msg.sender != lawEnforcer) throw; _ ; }
     modifier onlyAccountDesignator { if(msg.sender != accountDesignator) throw; _ ; }
+
+    function appointLawEnforcer(address next) onlyLawEnforcer { lawEnforcer = next; }
+    function appointAccountDesignator(address next) onlyAccountDesignator { accountDesignator = next; }
 
     // withdraw allows law enforcerer to withdraw to a dedicated account
     function withdraw(address from, uint256 amount)

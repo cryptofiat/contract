@@ -4,13 +4,16 @@
 
 const fs = require("fs");
 const Web3 = require("web3");
-const TestRPC = require("ethereumjs-testrpc");
 
 var web3 = new Web3();
-web3.setProvider(TestRPC.provider());
+web3.setProvider(new Web3.providers.IpcProvider("\\\\.\\pipe\\geth.ipc", require("net")));
 web3.eth.getAccounts(function(err, accounts) {
-	var GAS = 2000000;
-	console.log(accounts);
+	if (err) {
+		console.log(err);
+		throw (err);
+	}
+
+	var GAS = 1000000;
 	var MasterAccount = accounts[0];
 
 	var SETUP = {
@@ -87,32 +90,34 @@ web3.eth.getAccounts(function(err, accounts) {
 			bin: null,
 			create: function(args, success) {
 				var self = $Contract[name];
-
-				var result = self.abi.new({
+				args.push({
 					from: SETUP.MasterAccount,
-					data: self.bin,
+					data: "0x" + self.bin,
 					gas: GAS
-				}, function(err, contract) {
+				})
+				args.push(function(err, contract) {
 					if (err) {
-						console.log(err);
+						console.log("ERROR", err);
 						throw err;
 					}
 					if (!contract.address) {
-
+						console.log("# ", contract.transactionHash);
 					} else {
-						console.log(contract);
 						console.log("Contract " + name + " deployed to " + contract.address);
 						self.contract = contract;
 						self.address = contract.address;
 						success(contract);
 					}
 				});
+
+				self.abi.new.apply(self.abi, args);
 			}
 		};
 
 		work.add(function(next) {
 			load(".bin/" + name + ".abi", function(data) {
-				$Contract[name].abi = web3.eth.contract(JSON.parse(data));
+				var abi = JSON.parse(data);
+				$Contract[name].abi = web3.eth.contract(abi);
 				load(".bin/" + name + ".bin", function(data) {
 					$Contract[name].bin = data;
 					next();
@@ -176,3 +181,5 @@ web3.eth.getAccounts(function(err, accounts) {
 
 	work.run();
 });
+
+setTimeout(function() {}, 10000);
