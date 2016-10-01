@@ -37,6 +37,7 @@ contract Constants {
     bytes32 constant ENFORCEMENT      = 4;
     bytes32 constant ACCOUNT_RECOVERY = 5;
     bytes32 constant DELEGATION       = 6;
+    bytes32 constant MULTI_DELEGATION = 7;
 
     // data
     bytes32 constant BALANCE                  = 1;
@@ -77,6 +78,7 @@ contract Relay is Constants {
     function enforcement() internal returns (Enforcement) { return Enforcement(contractFor(ENFORCEMENT)); }
     function accountRecovery() internal returns (AccountRecovery) { return AccountRecovery(contractFor(ACCOUNT_RECOVERY)); }
     function delegation() internal returns (Delegation) { return Delegation(contractFor(DELEGATION)); }
+    function multiDelegation() internal returns (MultiDelegation) { return MultiDelegation(contractFor(MULTI_DELEGATION)); }
 }
 
 contract Data is Relay {
@@ -387,6 +389,99 @@ contract Delegation is InternalData {
         if(fee > 0){
             _deposit(delegate, fee);
             Transfer(source, delegate, fee);
+        }
+    }
+}
+
+contract MultiDelegation is InternalData {
+    function MultiDelegation(address _cryptoFiat){
+        cryptoFiat = _cryptoFiat;
+    }
+
+    function delegatedTransferNonceOf(address account) returns (uint256) { return _delegatedTransferNonceOf(account); }
+
+    uint constant xfersize = 32+32+32+32+32+32+8;
+    // expected format
+    // struct XferEncoded {
+    //     uint256 nonce;
+    //     address destination;
+    //     uint256 amount;
+    //     uint256 fee;
+    //     uint32  r;
+    //     uint32  s;
+    //     uint8   v;
+    // }
+
+    struct Xfer {
+        uint256 nonce;
+        address source;
+        address destination;
+        uint256 amount;
+        uint256 fee;
+    }
+
+     function recoverXfer(bytes data, uint offset)
+        internal
+        returns (Xfer)
+    {
+        uint base = xfersize * offset;
+
+        uint256 nonce;
+        address destination;
+        uint256 amount;
+        uint256 fee;
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            nonce := mload(add(data, 32))
+            destination := mload(add(data, 64))
+            amount := mload(add(data, 96))
+            fee := mload(add(data, 128))
+            r := mload(add(data, 160))
+            s := mload(add(data, 192))
+            v := and(mload(add(data, 224)), 255)
+        }
+        if(v < 27){
+            v += 27;
+        }
+
+        bytes32 hash = sha3(nonce, destination, amount, fee);
+
+        Xfer memory xfer;
+        xfer.nonce = nonce;
+        xfer.source = ecrecover(hash, v, r, s);
+        xfer.destination = destination;
+        xfer.amount = amount;
+        xfer.fee = fee;
+
+        return xfer;
+    }
+
+    function delegatedTransfers(
+        uint256 count,
+        bytes   transfers,
+        address delegate
+    ) {
+        for(uint i = 0; i < count; i++){
+            Xfer memory xfer = recoverXfer(transfers, i);
+
+            // check whether source can send
+            assertSend(xfer.source);
+
+            // protect against replayed transactions
+            if(_delegatedTransferNonceOf(xfer.source) >= xfer.nonce) throw;
+            _setDelegatedTransferNonceOf(xfer.source, xfer.nonce);
+
+            _withdraw(xfer.source, xfer.amount + xfer.fee);
+            _deposit(xfer.destination, xfer.amount);
+
+            Transfer(xfer.source, xfer.destination, xfer.amount);
+            if(xfer.fee > 0){
+                _deposit(delegate, xfer.fee);
+                Transfer(xfer.source, delegate, xfer.fee);
+            }
         }
     }
 }
