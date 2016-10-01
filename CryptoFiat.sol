@@ -400,15 +400,15 @@ contract MultiDelegation is InternalData {
 
     function delegatedTransferNonceOf(address account) returns (uint256) { return _delegatedTransferNonceOf(account); }
 
-    uint constant xfersize = 32+32+32+32+32+32+8;
+    uint constant xfersize = 32+32+32+32+32+32+1;
     // expected format
     // struct XferEncoded {
     //     uint256 nonce;
     //     address destination;
     //     uint256 amount;
     //     uint256 fee;
-    //     uint32  r;
-    //     uint32  s;
+    //     bytes32 r;
+    //     bytes32 s;
     //     uint8   v;
     // }
 
@@ -441,7 +441,7 @@ contract MultiDelegation is InternalData {
             fee := mload(add(data, 128))
             r := mload(add(data, 160))
             s := mload(add(data, 192))
-            v := and(mload(add(data, 224)), 255)
+            v := and(mload(add(data, 193)), 255)
         }
         if(v < 27){
             v += 27;
