@@ -1,5 +1,86 @@
 pragma solidity ^0.4.0;
 
+contract CryptoFiat {
+    address public masterAccount;
+    modifier onlyMasterAccount {
+        if(msg.sender != masterAccount) throw;
+        _ ;
+    }
+
+    address public data;
+    address public logic;
+
+    function CryptoFiat(){
+        masterAccount = msg.sender;
+    }
+
+    function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
+    function upgradeData(address next) onlyMasterAccount { data = next; }
+    function upgradeLogic(address next) onlyMasterAccount { logic = next; }
+
+    function () {
+        if(!logic.delegatecall(msg.data)) throw;
+    }
+}
+
+contract Relay {
+    address relay;
+
+    modifier onlyLogic {
+        address logic = CryptoFiat(relay).logic();
+        if(msg.sender != logic) throw;
+        _;
+    }
+
+    function data()  internal returns (Storage)         { return Storage(CryptoFiat(relay).data()); }
+    function logic() internal returns (CryptoFiatLogic) { return CryptoFiatLogic(CryptoFiat(relay).logic()); }
+}
+
+contract Storage is Relay {
+    mapping(bytes32 => bytes32) private data;
+
+    function set(bytes32 context, bytes32 key, bytes32 value)
+        onlyLogic
+    {
+        data[sha3(context, key)] = value;
+    }
+
+    function get(bytes32 context, bytes32 key)
+        onlyLogic
+        returns (bytes32)
+    {
+        return data[sha3(context, key)];
+    }
+}
+
+contract ExternalStorage is Relay {
+    bytes32 constant BALANCE = 1;
+    bytes32 constant STATE = 2;
+    bytes32 constant DELEGATED_TRANSFER_NONCE = 3;
+    bytes32 constant RECOVERY_ACCOUNT = 4;
+    bytes32 constant TOTAL_SUPPLY = 5;
+
+    // balance contains the balance of an account
+    function balanceOf(address addr) returns (uint256) { return uint256(data().get(BALANCE, bytes32(addr))); }
+    function setBalanceOf(address addr, uint256 value) internal { data().set(BALANCE, bytes32(addr), bytes32(value)); }
+
+    // state contains the current state of an account
+    function stateOf(address addr) returns (uint256) { return uint256(data().get(STATE, bytes32(addr))); }
+    function setStateOf(address addr, uint256 value) internal { data().set(STATE, bytes32(addr), bytes32(value)); }
+
+    // delegated trancfer nonce contains the last nonce used in delegatedTransfer
+    function delegatedTransferNonceOf(address addr) returns (uint256) { return uint256(data().get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
+    function setDelegatedTransferNonceOf(address addr, uint256 value) internal { data().set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
+
+    // recovery account contains a fallback account that can be used to recover funds
+    function recoveryAccountOf(address addr) returns (address) { return address(data().get(RECOVERY_ACCOUNT, bytes32(addr))); }
+    function setRecoveryAccountOf(address addr, address value) internal { data().set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
+
+    // totalSupply is the total amount of tokens in circulation
+    function totalSupply() returns (uint256) { return uint256(data().get(TOTAL_SUPPLY, bytes32(0))); }
+    function setTotalSupply(uint256 value) internal { data().set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
+}
+
 // Appointed defines all appointed roles and specifies how they can be changed
 contract Appointed {
     address public reserveBank;
@@ -48,31 +129,28 @@ contract Appointed {
 }
 
 // Accounts defines basic account and capabilities
-contract Accounts is Appointed {
-    uint8 constant Approved = 1;
-    uint8 constant Closed   = 2;
-    uint8 constant Frozen   = 4;
+contract Accounts is ExternalStorage, Appointed {
+    uint8 constant APPROVED = 1;
+    uint8 constant CLOSED   = 2;
+    uint8 constant FROZEN   = 4;
 
-    // account state
-    mapping (address => uint8) public stateOf;
+    function isApproved(address account) internal returns (bool) { return stateOf(account) & APPROVED == APPROVED; }
+    function isClosed(address account)   internal returns (bool) { return stateOf(account) & CLOSED   == CLOSED;   }
+    function isFrozen(address account)   internal returns (bool) { return stateOf(account) & FROZEN   == FROZEN;   }
 
-    function isApproved(address account) internal returns (bool) { return stateOf[account] & Approved == Approved; }
-    function isClosed(address account)   internal returns (bool) { return stateOf[account] & Closed   == Closed;   }
-    function isFrozen(address account)   internal returns (bool) { return stateOf[account] & Frozen   == Frozen;   }
-
-    event AccountApproved(address source);
-    event AccountFreeze(address source, bool frozen);
-    event AccountClosed(address source);
+    event AccountApproved(address indexed source);
+    event AccountFreeze(address indexed source, bool frozen);
+    event AccountClosed(address indexed source);
 
     function approveAccount(address account) onlyAccountApprover {
-        stateOf[account] |= Approved;
+        setStateOf(account, stateOf(account) | APPROVED);
         AccountApproved(account);
     }
 
     // closeAccount closes the account for receiving money
-    function closeAccount(address target) onlyAccountApprover {
-        stateOf[target] |= Closed;
-        AccountClosed(target);
+    function closeAccount(address account) onlyAccountApprover {
+        setStateOf(account, stateOf(account) | CLOSED);
+        AccountClosed(account);
     }
 
     modifier canSend(address account) {
@@ -93,10 +171,8 @@ contract Accounts is Appointed {
 }
 
 // Balance defines the balance for Accounts
-contract Balance is Accounts {
-    mapping (address => uint256) public balanceOf;
-
-    event Transfer(address source, address destination, uint256 amount);
+contract Balance is ExternalStorage, Accounts {
+    event Transfer(address indexed source, address indexed destination, uint256 amount);
 
     function transfer(address destination, uint256 amount)
         canSend(msg.sender)
@@ -111,24 +187,21 @@ contract Balance is Accounts {
 
     function withdraw(address account, uint256 amount) internal {
         // check for underflow
-        if(balanceOf[account] < amount) throw;
-
-        balanceOf[account] -= amount;
+        uint256 balance = balanceOf(account);
+        if(balance < amount) throw;
+        setBalanceOf(account, balance - amount);
     }
 
     function deposit(address account, uint256 amount) internal {
         // check for overflow
-        if(balanceOf[account] + amount < balanceOf[account]) throw;
-
-        balanceOf[account] += amount;
+        uint256 balance = balanceOf(account);
+        if(balance + amount < balance) throw;
+        setBalanceOf(account, balance + amount);
     }
 }
 
 // Supply defines how tokens are increased/decreased in/from circulation
-contract Supply is Appointed, Balance {
-    // totalSupply is the total amount of tokens in circulation
-    uint256 public totalSupply;
-
+contract Supply is ExternalStorage, Appointed, Balance {
     event SupplyChanged(uint256 totalSupply);
 
     // increaseSupply increases the tokens in circulation
@@ -136,13 +209,15 @@ contract Supply is Appointed, Balance {
         onlyReserveBank
         canReceive(reserveBank)
     {
-        if(totalSupply + amount < totalSupply) throw;
-        totalSupply += amount;
+        uint256 supply = totalSupply();
+        if(supply + amount < supply) throw;
+        supply += amount;
+        setTotalSupply(supply);
 
         deposit(reserveBank, amount);
         Transfer(0, reserveBank, amount);
 
-        SupplyChanged(totalSupply);
+        SupplyChanged(supply);
     }
 
     // decreaseSupply decreases the amount of tokens in circulation
@@ -150,22 +225,20 @@ contract Supply is Appointed, Balance {
         onlyReserveBank
         canSend(reserveBank)
     {
-        if(totalSupply < amount) throw; // invalid state
-        totalSupply -= amount;
+        uint256 supply = totalSupply();
+        if(supply < amount) throw; // invalid state
+        supply -= amount;
+        setTotalSupply(supply);
 
         withdraw(reserveBank, amount);
         Transfer(reserveBank, 0, amount);
 
-        SupplyChanged(totalSupply);
+        SupplyChanged(supply);
     }
 }
 
 // DelegatedTransfer allows a third-party to transfer money on behalf of an account
-contract DelegatedTransfer is Balance {
-    // delegatedTransferNonce protects against using same signed transfer
-    // multiple times
-    mapping (address => uint256) public delegatedTransferNonce;
-
+contract DelegatedTransfer is ExternalStorage, Balance {
     function recoverSigner(bytes32 hash, bytes signature)
         internal
         returns (address)
@@ -210,8 +283,9 @@ contract DelegatedTransfer is Balance {
         assertSend(source);
 
         // protect against replayed transactions
-        if(delegatedTransferNonce[source] >= nonce) throw;
-        delegatedTransferNonce[source] = nonce;
+
+        if(delegatedTransferNonceOf(source) >= nonce) throw;
+        setDelegatedTransferNonceOf(source, nonce);
 
         withdraw(source, amount + fee);
         deposit(destination, amount);
@@ -225,19 +299,11 @@ contract DelegatedTransfer is Balance {
 }
 
 // AccountRecovery specifies mechhanisms for recovering tokens from an account
-contract AccountRecovery is Accounts, Balance {
-    // each account can, optionally, specify a recovery account in case
-    // the original address cannot be accessed due to lost keys
-    mapping (address => address) public recoveryAccountOf;
-
+contract AccountRecovery is ExternalStorage, Accounts, Balance {
     // designateRecoveryAccount allows msg.sender to specify a trusted account
     // that can recover the tokens
     function designateRecoveryAccount(address recoveryAccount){
-        if(recoveryAccount == 0){
-            delete recoveryAccountOf[msg.sender];
-        } else {
-            recoveryAccountOf[msg.sender] = recoveryAccount;
-        }
+        setRecoveryAccountOf(msg.sender, recoveryAccount);
     }
 
     // recoverBalance allows to recover tokens on a particular account
@@ -246,13 +312,13 @@ contract AccountRecovery is Accounts, Balance {
         canSend(from)
         canReceive(into)
     {
-        if(msg.sender != recoveryAccountOf[from]) throw;
+        if(msg.sender != recoveryAccountOf(from)) throw;
 
         // close the account
-        stateOf[from] |= Closed;
+        setStateOf(from, stateOf(from) | CLOSED);
         AccountClosed(from);
 
-        uint256 amount = balanceOf[from];
+        uint256 amount = balanceOf(from);
 
         withdraw(from, amount);
         deposit(into, amount);
@@ -286,19 +352,19 @@ contract Enforcement is Appointed, Balance {
 
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
-        stateOf[target] |= Frozen;
+        setStateOf(target, stateOf(target) | FROZEN);
         AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
-        stateOf[target] = stateOf[target] & ~Frozen;
+        setStateOf(target, stateOf(target) & ~FROZEN);
         AccountFreeze(target, false);
     }
 }
 
 // CryptoFiat defines crypto currency with government regulations
-contract CryptoFiat is
+contract CryptoFiatLogic is
     Appointed,
     Accounts,
     Balance,
@@ -312,7 +378,7 @@ contract CryptoFiat is
     string public symbol;
     uint8  public decimals = 2;
 
-    function CryptoFiat(
+    function CryptoFiatLogic(
         string tokenName,
         string tokenSymbol,
         uint8  decimalUnits,
