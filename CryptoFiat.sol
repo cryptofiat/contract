@@ -54,7 +54,7 @@ contract Constants {
 
     // bucket identifier
     uint constant BALANCE                  = 1;
-    uint constant STATE                    = 2;
+    uint constant STATUS                   = 2;
     uint constant DELEGATED_TRANSFER_NONCE = 3;
     uint constant RECOVERY_ACCOUNT         = 4;
     uint constant TOTAL_SUPPLY             = 5;
@@ -126,8 +126,8 @@ contract InternalData is Constants, Relay {
     function _setBalanceOf(address addr, uint256 value) internal { data().set(BALANCE, bytes32(addr), bytes32(value)); }
 
     // state contains the current state of an account
-    function _stateOf(address addr) constant internal returns (uint256) { return uint256(data().get(STATE, bytes32(addr))); }
-    function _setStateOf(address addr, uint256 value) internal { data().set(STATE, bytes32(addr), bytes32(value)); }
+    function _statusOf(address addr) constant internal returns (uint256) { return uint256(data().get(STATUS, bytes32(addr))); }
+    function _setStatusOf(address addr, uint256 value) internal { data().set(STATUS, bytes32(addr), bytes32(value)); }
 
     // delegated trancfer nonce contains the last nonce used in delegatedTransfer
     function _delegatedTransferNonceOf(address addr) constant internal returns (uint256) { return uint256(data().get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
@@ -142,13 +142,13 @@ contract InternalData is Constants, Relay {
     function _setTotalSupply(uint256 value) internal { data().set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
 
     // for checking account status
-    function isApproved(address account) constant internal returns (bool) { return _stateOf(account) & APPROVED == APPROVED; }
-    function isClosed(address account)   constant internal returns (bool) { return _stateOf(account) & CLOSED   == CLOSED;   }
-    function isFrozen(address account)   constant internal returns (bool) { return _stateOf(account) & FROZEN   == FROZEN;   }
+    function _isApproved(address account) constant internal returns (bool) { return _statusOf(account) & APPROVED == APPROVED; }
+    function _isClosed(address account)   constant internal returns (bool) { return _statusOf(account) & CLOSED   == CLOSED;   }
+    function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN   == FROZEN;   }
 
     modifier canSend(address account) {
-        if(!isApproved(account)) throw;
-        if(isFrozen(account)) throw;
+        if(!_isApproved(account)) throw;
+        if(_isFrozen(account)) throw;
 
         if(account == 0) throw;
         _;
@@ -156,7 +156,7 @@ contract InternalData is Constants, Relay {
     function assertSend(address account) constant internal canSend(account) {}
 
     modifier canReceive(address account) {
-        if(isClosed(account)) throw;
+        if(_isClosed(account)) throw;
         if(account == 0) throw;
         _;
     }
@@ -185,7 +185,11 @@ contract Accounts is InternalData {
 
     // balance contains the balance of an account
     function balanceOf(address addr) constant returns (uint256) { return _balanceOf(addr); }
-    function stateOf(address addr) constant returns (uint256) { return _stateOf(addr); }
+    function statusOf(address addr) constant returns (uint256) { return _statusOf(addr); }
+
+    function isApproved(address account) constant returns (bool) { return _isApproved(account); }
+    function isClosed(address account)   constant returns (bool) { return _isClosed(account); }
+    function isFrozen(address account)   constant returns (bool) { return _isFrozen(account); }
 
     function transfer(address destination, uint256 amount)
         canSend(msg.sender)
@@ -212,7 +216,7 @@ contract Approving is InternalData {
 
     // approveAccount makes it possible for an account to send money
     function approveAccount(address account) onlyAccountApprover {
-        _setStateOf(account, _stateOf(account) | APPROVED);
+        _setStatusOf(account, _statusOf(account) | APPROVED);
         AccountApproved(account);
     }
 
@@ -225,7 +229,7 @@ contract Approving is InternalData {
 
     // closeAccount closes the account for receiving money
     function closeAccount(address account) onlyAccountApprover {
-        _setStateOf(account, _stateOf(account) | CLOSED);
+        _setStatusOf(account, _statusOf(account) | CLOSED);
         AccountClosed(account);
     }
 }
@@ -307,13 +311,13 @@ contract Enforcement is InternalData {
 
     // freezeAccount disallows account to send money
     function freezeAccount(address target) onlyLawEnforcer {
-        _setStateOf(target, _stateOf(target) | FROZEN);
+        _setStatusOf(target, _statusOf(target) | FROZEN);
         AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
     function unfreezeAccount(address target) onlyLawEnforcer {
-        _setStateOf(target, _stateOf(target) & ~FROZEN);
+        _setStatusOf(target, _statusOf(target) & ~FROZEN);
         AccountFreeze(target, false);
     }
 
@@ -346,7 +350,7 @@ contract AccountRecovery is InternalData {
         if(msg.sender != _recoveryAccountOf(from)) throw;
 
         // close the account
-        _setStateOf(from, _stateOf(from) | CLOSED);
+        _setStatusOf(from, _statusOf(from) | CLOSED);
         AccountClosed(from);
 
         uint256 amount = _balanceOf(from);
