@@ -43,7 +43,6 @@ contract Constants {
     uint256 constant ENFORCEMENT      = 4;
     uint256 constant ACCOUNT_RECOVERY = 5;
     uint256 constant DELEGATION       = 6;
-    uint256 constant MULTI_DELEGATION = 7;
 
     // data
     uint256 constant BALANCE                  = 1;
@@ -89,7 +88,6 @@ contract Relay is Constants {
     function enforcement() constant internal returns (Enforcement) { return Enforcement(contractFor(ENFORCEMENT)); }
     function accountRecovery() constant internal returns (AccountRecovery) { return AccountRecovery(contractFor(ACCOUNT_RECOVERY)); }
     function delegation() constant internal returns (Delegation) { return Delegation(contractFor(DELEGATION)); }
-    function multiDelegation() constant internal returns (MultiDelegation) { return MultiDelegation(contractFor(MULTI_DELEGATION)); }
 }
 
 contract Data is Relay {
@@ -357,7 +355,7 @@ contract Delegation is InternalData {
         cryptoFiat = _cryptoFiat;
     }
 
-    function delegatedNonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
+    function nonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
 
     function recoverSigner(bytes32 hash, bytes signature)
         internal
@@ -416,14 +414,6 @@ contract Delegation is InternalData {
             Transfer(source, delegate, fee);
         }
     }
-}
-
-contract MultiDelegation is InternalData {
-    function MultiDelegation(address _cryptoFiat){
-        cryptoFiat = _cryptoFiat;
-    }
-
-    function delegatedNonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
 
     uint constant xfersize = 32+32+32+32+32+32+1;
     // expected format

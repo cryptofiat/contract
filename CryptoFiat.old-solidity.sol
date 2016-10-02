@@ -380,7 +380,7 @@ contract Delegation is InternalData {
         return ecrecover(hash, v, r, s);
     }
 
-    function delegatedTransfer(
+    function transfer(
         // transfer request
         uint256 nonce, address destination, uint256 amount, uint256 fee,
         // transfer request signed by source
@@ -482,7 +482,7 @@ contract MultiDelegation is InternalData {
         return xfer;
     }
 
-    function delegatedTransfers(
+    function transfers(
         uint256 count,
         bytes   transfers,
         address delegate
