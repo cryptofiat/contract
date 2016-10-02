@@ -10,6 +10,17 @@ function emit(line) {
 	abijs += line + "\n";
 }
 
+var Constants = {
+	Data: 0,
+	Accounts: 1,
+	Approving: 2,
+	Reserve: 3,
+	Enforcement: 4,
+	AccountRecovery: 5,
+	Delegation: 6,
+	MultiDelegation: 7
+};
+
 emit("// GENERATED CODE");
 emit("// DO NOT MODIFY");
 emit("var Contract = {};")
@@ -21,17 +32,18 @@ fs.readdirSync(".bin").forEach(function(file) {
 	var name = file.substr(0, file.length - 4);
 
 	var data = fs.readFileSync(".bin\\" + file, "utf8");
+
+	if (Constants.hasOwnProperty(name) || (name == "CryptoFiat")) {
+		fs.writeFileSync("abi\\" + file, data);
+	}
 	emit("Contract['" + name + "'] = web3.eth.contract(" + data.trim() + ");");
 });
 
 emit("");
-emit("var CryptoFiat = Contract.CryptoFiat.at(ROOT || '" + ROOT + "');");
-emit("var Accounts = Contract.Accounts.at(CryptoFiat.contracts(1));");
-emit("var Approving = Contract.Approving.at(CryptoFiat.contracts(2));");
-emit("var Reserve = Contract.Reserve.at(CryptoFiat.contracts(3));");
-emit("var Enforcement = Contract.Enforcement.at(CryptoFiat.contracts(4));");
-emit("var AccountRecovery = Contract.AccountRecovery.at(CryptoFiat.contracts(5));");
-emit("var Delegation = Contract.Delegation.at(CryptoFiat.contracts(6));");
-emit("var MultiDelegation = Contract.MultiDelegation.at(CryptoFiat.contracts(7));");
+emit("var CryptoFiat = Contract.CryptoFiat.at('" + ROOT + "');");
+
+for (var name in Constants) {
+	emit("var " + name + " = Contract.Accounts.at(CryptoFiat.contracts(" + Constants[name] + "));");
+}
 
 fs.writeFileSync("cryptofiat.abi.js", abijs);
