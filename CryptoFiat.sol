@@ -7,7 +7,7 @@ contract CryptoFiat {
         _ ;
     }
 
-    mapping(uint256 => address) public lookup;
+    mapping(uint => address) public lookup;
     mapping(address => bool) public approved;
     address[] public contracts;
 
@@ -17,7 +17,7 @@ contract CryptoFiat {
 
     function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
 
-    function upgrade(uint256 id, address next) {
+    function upgrade(uint id, address next) {
         address prev = lookup[id];
 
         // message sender or the previous contract
@@ -36,25 +36,25 @@ contract CryptoFiat {
 
 contract Constants {
     // contracts
-    uint256 constant DATA             = 0;
-    uint256 constant ACCOUNTS         = 1;
-    uint256 constant APPROVING        = 2;
-    uint256 constant RESERVE          = 3;
-    uint256 constant ENFORCEMENT      = 4;
-    uint256 constant ACCOUNT_RECOVERY = 5;
-    uint256 constant DELEGATION       = 6;
+    uint constant DATA             = 0;
+    uint constant ACCOUNTS         = 1;
+    uint constant APPROVING        = 2;
+    uint constant RESERVE          = 3;
+    uint constant ENFORCEMENT      = 4;
+    uint constant ACCOUNT_RECOVERY = 5;
+    uint constant DELEGATION       = 6;
 
     // data
-    uint256 constant BALANCE                  = 1;
-    uint256 constant STATE                    = 2;
-    uint256 constant DELEGATED_TRANSFER_NONCE = 3;
-    uint256 constant RECOVERY_ACCOUNT         = 4;
-    uint256 constant TOTAL_SUPPLY             = 5;
+    uint constant BALANCE                  = 1;
+    uint constant STATE                    = 2;
+    uint constant DELEGATED_TRANSFER_NONCE = 3;
+    uint constant RECOVERY_ACCOUNT         = 4;
+    uint constant TOTAL_SUPPLY             = 5;
 
     // account states
-    uint256 constant APPROVED = 1;
-    uint256 constant CLOSED   = 2;
-    uint256 constant FROZEN   = 4;
+    uint constant APPROVED = 1;
+    uint constant CLOSED   = 2;
+    uint constant FROZEN   = 4;
 
     // events
     event Transfer(address indexed source, address indexed destination, uint256 amount);
@@ -79,7 +79,7 @@ contract Relay is Constants {
     }
     function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
 
-    function contractFor(uint256 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).lookup(id); }
+    function contractFor(uint id) constant internal returns (address) { return CryptoFiat(cryptoFiat).lookup(id); }
 
     function data() constant internal returns (Data) { return Data(contractFor(DATA)); }
     function accounts() constant internal returns (Accounts) { return Accounts(contractFor(ACCOUNTS)); }
@@ -97,13 +97,13 @@ contract Data is Relay {
 
     mapping(bytes32 => bytes32) private data;
 
-    function set(uint256 context, bytes32 key, bytes32 value)
+    function set(uint context, bytes32 key, bytes32 value)
         onlyContracts
     {
         data[sha3(context, key)] = value;
     }
 
-    function get(uint256 context, bytes32 key)
+    function get(uint context, bytes32 key)
         constant
         returns (bytes32)
     {
