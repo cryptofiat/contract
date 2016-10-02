@@ -16,6 +16,7 @@ contract CryptoFiat {
     // list of contracts involved in this CryptoFiat instance
     // use this list of contracts for filtering for events
     address[] public contracts;
+    function contractsLength() constant returns (uint256) { return contracts.length; }
 
     function CryptoFiat(){
         masterAccount = msg.sender;
@@ -85,7 +86,7 @@ contract Constants {
 }
 
 contract Relay is Constants {
-    address cryptoFiat;
+    address public cryptoFiat;
 
     modifier onlyMasterAccount {
         if(CryptoFiat(cryptoFiat).masterAccount() != msg.sender) throw;
