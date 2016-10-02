@@ -5,8 +5,9 @@ contract CryptoFiat {
         _
     }
 
-    mapping(bytes32 => address) public contracts;
-    mapping(address => uint256) public approved;
+    mapping(uint256 => address) public lookup;
+    mapping(address => bool) public approved;
+    address[] public contracts;
 
     function CryptoFiat(){
         masterAccount = msg.sender;
@@ -14,35 +15,40 @@ contract CryptoFiat {
 
     function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
 
-    function upgrade(bytes32 id, address next) {
-        address prev = contracts[id];
+    function upgrade(uint256 id, address next) {
+        address prev = lookup[id];
+
         // message sender or the previous contract
         bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
         if(!canUpgrade) throw;
 
-        if(prev != 0) approved[prev] -= 1;
-        contracts[id] = next;
-        if(next != 0) approved[next] += 1;
+        // check double use of contract
+        if(approved[next]) throw;
+        approved[next] = true;
+        lookup[id] = next;
+        if(next != 0) approved[next] = false;
+
+        contracts.push(next);
     }
 }
 
 contract Constants {
     // contracts
-    bytes32 constant DATA             = 0;
-    bytes32 constant ACCOUNTS         = 1;
-    bytes32 constant APPROVING        = 2;
-    bytes32 constant RESERVE          = 3;
-    bytes32 constant ENFORCEMENT      = 4;
-    bytes32 constant ACCOUNT_RECOVERY = 5;
-    bytes32 constant DELEGATION       = 6;
-    bytes32 constant MULTI_DELEGATION = 7;
+    uint256 constant DATA             = 0;
+    uint256 constant ACCOUNTS         = 1;
+    uint256 constant APPROVING        = 2;
+    uint256 constant RESERVE          = 3;
+    uint256 constant ENFORCEMENT      = 4;
+    uint256 constant ACCOUNT_RECOVERY = 5;
+    uint256 constant DELEGATION       = 6;
+    uint256 constant MULTI_DELEGATION = 7;
 
     // data
-    bytes32 constant BALANCE                  = 1;
-    bytes32 constant STATE                    = 2;
-    bytes32 constant DELEGATED_TRANSFER_NONCE = 3;
-    bytes32 constant RECOVERY_ACCOUNT         = 4;
-    bytes32 constant TOTAL_SUPPLY             = 5;
+    uint256 constant BALANCE                  = 1;
+    uint256 constant STATE                    = 2;
+    uint256 constant DELEGATED_TRANSFER_NONCE = 3;
+    uint256 constant RECOVERY_ACCOUNT         = 4;
+    uint256 constant TOTAL_SUPPLY             = 5;
 
     // account states
     uint256 constant APPROVED = 1;
@@ -62,12 +68,17 @@ contract Constants {
 contract Relay is Constants {
     address cryptoFiat;
 
-    modifier onlyContracts {
-        if(CryptoFiat(cryptoFiat).approved(msg.sender) <= 0) throw;
+    modifier onlyMasterAccount {
+        if(CryptoFiat(cryptoFiat).masterAccount() == msg.sender) throw;
         _
     }
+    modifier onlyContracts {
+        if(!CryptoFiat(cryptoFiat).approved(msg.sender)) throw;
+        _
+    }
+    function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
 
-    function contractFor(bytes32 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).contracts(id); }
+    function contractFor(uint256 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).lookup(id); }
 
     function data() constant internal returns (Data) { return Data(contractFor(DATA)); }
     function accounts() constant internal returns (Accounts) { return Accounts(contractFor(ACCOUNTS)); }
@@ -86,13 +97,13 @@ contract Data is Relay {
 
     mapping(bytes32 => bytes32) private data;
 
-    function set(bytes32 context, bytes32 key, bytes32 value)
+    function set(uint256 context, bytes32 key, bytes32 value)
         onlyContracts
     {
         data[sha3(context, key)] = value;
     }
 
-    function get(bytes32 context, bytes32 key)
+    function get(uint256 context, bytes32 key)
         constant
         returns (bytes32)
     {
