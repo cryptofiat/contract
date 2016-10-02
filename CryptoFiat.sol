@@ -7,49 +7,62 @@ contract CryptoFiat {
         _ ;
     }
 
-    mapping(bytes32 => address) public contracts;
-    mapping(address => uint256) public approved;
+    // lookup table for finding a particular contract by ID
+    mapping(uint => address) public contractAddress;
+    mapping(address => uint) public contractId;
+
+    // list of contracts involved in this CryptoFiat instance
+    // use this list of contracts for filtering for events
+    address[] public contracts;
 
     function CryptoFiat(){
         masterAccount = msg.sender;
+        contracts.push(address(this));
     }
 
     function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
 
-    function upgrade(bytes32 id, address next) {
-        address prev = contracts[id];
+    event ContractUpgraded(uint indexed id, address previous, address next);
+    function upgrade(uint id, address next) {
+        if(id == 0) throw;
+        address prev = contractAddress[id];
+
         // message sender or the previous contract
         bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
         if(!canUpgrade) throw;
 
-        if(prev != 0) approved[prev] -= 1;
-        contracts[id] = next;
-        if(next != 0) approved[next] += 1;
+        // check double use of contract
+        if(contractId[next] != 0) throw;
+        contractId[next] = id;
+        contractAddress[id] = next;
+        if(next != 0) contractId[next] = id;
+
+        ContractUpgraded(id, prev, next);
+        contracts.push(next);
     }
 }
 
 contract Constants {
-    // contracts
-    bytes32 constant DATA             = 0;
-    bytes32 constant ACCOUNTS         = 1;
-    bytes32 constant APPROVING        = 2;
-    bytes32 constant RESERVE          = 3;
-    bytes32 constant ENFORCEMENT      = 4;
-    bytes32 constant ACCOUNT_RECOVERY = 5;
-    bytes32 constant DELEGATION       = 6;
-    bytes32 constant MULTI_DELEGATION = 7;
+    // contract id
+    uint constant DATA             = 1;
+    uint constant ACCOUNTS         = 2;
+    uint constant APPROVING        = 3;
+    uint constant RESERVE          = 4;
+    uint constant ENFORCEMENT      = 5;
+    uint constant ACCOUNT_RECOVERY = 6;
+    uint constant DELEGATION       = 7;
 
-    // data
-    bytes32 constant BALANCE                  = 1;
-    bytes32 constant STATE                    = 2;
-    bytes32 constant DELEGATED_TRANSFER_NONCE = 3;
-    bytes32 constant RECOVERY_ACCOUNT         = 4;
-    bytes32 constant TOTAL_SUPPLY             = 5;
+    // bucket identifier
+    uint constant BALANCE                  = 1;
+    uint constant STATE                    = 2;
+    uint constant DELEGATED_TRANSFER_NONCE = 3;
+    uint constant RECOVERY_ACCOUNT         = 4;
+    uint constant TOTAL_SUPPLY             = 5;
 
     // account states
-    uint256 constant APPROVED = 1;
-    uint256 constant CLOSED   = 2;
-    uint256 constant FROZEN   = 4;
+    uint constant APPROVED = 1;
+    uint constant CLOSED   = 2;
+    uint constant FROZEN   = 4;
 
     // events
     event Transfer(address indexed source, address indexed destination, uint256 amount);
@@ -64,21 +77,25 @@ contract Constants {
 contract Relay is Constants {
     address cryptoFiat;
 
-    modifier onlyContracts {
-        if(CryptoFiat(cryptoFiat).approved(msg.sender) <= 0) throw;
+    modifier onlyMasterAccount {
+        if(CryptoFiat(cryptoFiat).masterAccount() == msg.sender) throw;
         _;
     }
+    modifier onlyContracts {
+        if(CryptoFiat(cryptoFiat).contractId(msg.sender) > 0) throw;
+        _;
+    }
+    function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
 
-    function contractFor(bytes32 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).contracts(id); }
+    function contractAddress(uint id) constant internal returns (address) { return CryptoFiat(cryptoFiat).contractAddress(id); }
 
-    function data() constant internal returns (Data) { return Data(contractFor(DATA)); }
-    function accounts() constant internal returns (Accounts) { return Accounts(contractFor(ACCOUNTS)); }
-    function approving() constant internal returns (Approving) { return Approving(contractFor(APPROVING)); }
-    function reserve() constant internal returns (Reserve) { return Reserve(contractFor(RESERVE)); }
-    function enforcement() constant internal returns (Enforcement) { return Enforcement(contractFor(ENFORCEMENT)); }
-    function accountRecovery() constant internal returns (AccountRecovery) { return AccountRecovery(contractFor(ACCOUNT_RECOVERY)); }
-    function delegation() constant internal returns (Delegation) { return Delegation(contractFor(DELEGATION)); }
-    function multiDelegation() constant internal returns (MultiDelegation) { return MultiDelegation(contractFor(MULTI_DELEGATION)); }
+    function data() constant internal returns (Data) { return Data(contractAddress(DATA)); }
+    function accounts() constant internal returns (Accounts) { return Accounts(contractAddress(ACCOUNTS)); }
+    function approving() constant internal returns (Approving) { return Approving(contractAddress(APPROVING)); }
+    function reserve() constant internal returns (Reserve) { return Reserve(contractAddress(RESERVE)); }
+    function enforcement() constant internal returns (Enforcement) { return Enforcement(contractAddress(ENFORCEMENT)); }
+    function accountRecovery() constant internal returns (AccountRecovery) { return AccountRecovery(contractAddress(ACCOUNT_RECOVERY)); }
+    function delegation() constant internal returns (Delegation) { return Delegation(contractAddress(DELEGATION)); }
 }
 
 contract Data is Relay {
@@ -88,17 +105,17 @@ contract Data is Relay {
 
     mapping(bytes32 => bytes32) private data;
 
-    function set(bytes32 context, bytes32 key, bytes32 value)
+    function set(uint bucket, bytes32 key, bytes32 value)
         onlyContracts
     {
-        data[sha3(context, key)] = value;
+        data[sha3(bucket, key)] = value;
     }
 
-    function get(bytes32 context, bytes32 key)
+    function get(uint bucket, bytes32 key)
         constant
         returns (bytes32)
     {
-        return data[sha3(context, key)];
+        return data[sha3(bucket, key)];
     }
 }
 
@@ -346,7 +363,7 @@ contract Delegation is InternalData {
         cryptoFiat = _cryptoFiat;
     }
 
-    function delegatedNonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
+    function nonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
 
     function recoverSigner(bytes32 hash, bytes signature)
         internal
@@ -371,7 +388,7 @@ contract Delegation is InternalData {
         return ecrecover(hash, v, r, s);
     }
 
-    function delegatedTransfer(
+    function transfer(
         // transfer request
         uint256 nonce, address destination, uint256 amount, uint256 fee,
         // transfer request signed by source
@@ -405,14 +422,6 @@ contract Delegation is InternalData {
             Transfer(source, delegate, fee);
         }
     }
-}
-
-contract MultiDelegation is InternalData {
-    function MultiDelegation(address _cryptoFiat){
-        cryptoFiat = _cryptoFiat;
-    }
-
-    function delegatedNonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
 
     uint constant xfersize = 32+32+32+32+32+32+1;
     // expected format
@@ -473,7 +482,7 @@ contract MultiDelegation is InternalData {
         return xfer;
     }
 
-    function delegatedTransfers(
+    function multitransfer(
         uint256 count,
         bytes   transfers,
         address delegate
