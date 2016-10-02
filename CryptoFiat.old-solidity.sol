@@ -9,6 +9,8 @@ contract CryptoFiat {
     mapping(uint => address) public contractAddress;
     mapping(address => uint) public contractId;
 
+    function contractActive(address addr) constant returns (bool) { return contractId[addr] > 0; }
+
     // list of contracts involved in this CryptoFiat instance
     // use this list of contracts for filtering for events
     address[] public contracts;
@@ -25,16 +27,23 @@ contract CryptoFiat {
         if(id == 0) throw;
         address prev = contractAddress[id];
 
+        if(prev == next) throw;
+
         // message sender or the previous contract
         bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
         if(!canUpgrade) throw;
 
         // check double use of contract
-        if(contractId[next] != 0) throw;
-        contractId[next] = id;
+        if(contractActive(next)) throw;
+
+        // disable previous contract
+        contractId[prev] = 0;
+
+        // activate next contract
         contractAddress[id] = next;
         if(next != 0) contractId[next] = id;
 
+        // finalize
         ContractUpgraded(id, prev, next);
         contracts.push(next);
     }
@@ -51,8 +60,8 @@ contract Constants {
     uint constant DELEGATION       = 7;
 
     // bucket identifier
-    uint constant BALANCE                  = 1;
-    uint constant STATUS                   = 2;
+    uint constant STATUS                   = 1;
+    uint constant BALANCE                  = 2;
     uint constant DELEGATED_TRANSFER_NONCE = 3;
     uint constant RECOVERY_ACCOUNT         = 4;
     uint constant TOTAL_SUPPLY             = 5;
@@ -76,11 +85,11 @@ contract Relay is Constants {
     address cryptoFiat;
 
     modifier onlyMasterAccount {
-        if(CryptoFiat(cryptoFiat).masterAccount() == msg.sender) throw;
+        if(CryptoFiat(cryptoFiat).masterAccount() != msg.sender) throw;
         _
     }
     modifier onlyContracts {
-        if(CryptoFiat(cryptoFiat).contractId(msg.sender) > 0) throw;
+        if(!CryptoFiat(cryptoFiat).contractActive(msg.sender)) throw;
         _
     }
     function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
