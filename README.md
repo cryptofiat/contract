@@ -36,7 +36,7 @@ To preserve the public anonymity of the account holders, the transfers are submi
 The CryptoFiat contract system is separated into multiple contracts based on
 different use cases.
 
-[**CryptoFiat**](https://etherscan.io/address/https://etherscan.io/address/0xa10a263D4336E4466502b2889D27D04582a86663)
+[**CryptoFiat**](https://etherscan.io/address/0xa10a263D4336E4466502b2889D27D04582a86663)
 is the main contract that holds the lookup table and makes it possible to
 upgrade rest of the contracts. It also contains a `contracts` list for
 finding all contracts that are or have been used -- it can be used to
