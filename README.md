@@ -13,10 +13,10 @@ To preserve the public anonymity of the account holders, the transfers are submi
 ## Estonia EUR Implementation
 
 * [CryptoFiat contract](https://etherscan.io/address/0xa10a263D4336E4466502b2889D27D04582a86663) [(src)](https://github.com/cryptofiat/contract/blob/4407651c8a6be0016969807a99a05cc7d01b3071/CryptoFiat.sol) - works functionally, backed by real EUR on reserve account
-* account-identity 54.194.233.151:8080 - approves accounts based on Estonia mobile-ID test certs
-* wallet-server 54.194.234.190:8080 - reference implementation - delegated Transfers not functional
-* wallet-client :9000 - reference implementation - not functional
-* transfer-info 54.194.234.190:8000/ - for storing payment references, sender name, etc (not used yet)
+* account-identity id.euro2.ee:8080 - approves accounts based on Estonia mobile-ID test certs
+* wallet-server wallet.euro2.ee:8080 - reference implementation of server side wallet, which delegates requests to blockchain
+* wallet-client wallet.euro2.ee - reference implementation of client side wallet, which stores keys, signs transactions
+* transfer-info wallet.euro2.ee:8000/ - for storing payment references, sender name, etc
 * parity node :8545 - provides a JSON RPC to ethereum for wallet-server and account-identity
 
 ![alt visual](eth-eur-0-41.png)
