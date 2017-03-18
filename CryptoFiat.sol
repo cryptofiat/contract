@@ -114,19 +114,19 @@ contract Data is Relay {
         cryptoFiat = _cryptoFiat;
     }
 
-    mapping(bytes32 => bytes32) private data;
+    mapping(bytes32 => bytes32) private _data;
 
     function set(uint256 bucket, bytes32 key, bytes32 value)
         onlyContracts
     {
-        data[sha3(bucket, key)] = value;
+        _data[sha3(bucket, key)] = value;
     }
 
     function get(uint256 bucket, bytes32 key)
         constant
         returns (bytes32)
     {
-        return data[sha3(bucket, key)];
+        return _data[sha3(bucket, key)];
     }
 }
 
