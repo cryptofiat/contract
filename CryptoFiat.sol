@@ -1,4 +1,4 @@
-pragma solidity ^0.4.0;
+pragma solidity ^0.4.10;
 
 contract CryptoFiat {
     address public masterAccount;
