@@ -86,9 +86,8 @@ Is set individually by an account holder and may be any account - either a group
 
 
 ## Building contract locally
-* Have nodejs with npm
- * `brew install node`
-* have [solc](http://solidity.readthedocs.io/en/latest/installing-solidity.html)
- * `npm install solc`
-* Build it!
- * `node build.js`
+* Install Go
+* Install latest Solidity compile
+  * https://github.com/ethereum/solidity/releases
+* Run make.go
+  * `$ go run make.go`
