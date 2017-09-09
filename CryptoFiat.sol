@@ -1,10 +1,9 @@
-pragma solidity ^0.4.16;
+pragma solidity ^0.4.15;
 
 contract CryptoFiat {
     address public masterAccount;
     modifier onlyMasterAccount {
-        if (msg.sender != masterAccount)
-            revert();
+        require(msg.sender == masterAccount);
         _ ;
     }
 
@@ -28,21 +27,16 @@ contract CryptoFiat {
 
     event ContractUpgraded(uint256 indexed id, address previous, address next);
     function upgrade(uint256 id, address next) {
-        if (id == 0)
-            revert();
+        require(id != 0);
         address prev = contractAddress[id];
 
-        if (prev == next)
-            revert();
+        require(prev != next);
 
         // message sender or the previous contract
         bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
-        if (!canUpgrade)
-            revert();
-
+        require(canUpgrade);
         // check double use of contract
-        if (contractActive(next))
-            revert();
+        require(!contractActive(next));
 
         // disable previous contract
         contractId[prev] = 0;
@@ -95,13 +89,11 @@ contract Relay is Constants {
     address public cryptoFiat;
 
     modifier onlyMasterAccount {
-        if (CryptoFiat(cryptoFiat).masterAccount() != msg.sender)
-            revert();
+        require(CryptoFiat(cryptoFiat).masterAccount() == msg.sender);
         _;
     }
     modifier onlyContracts {
-        if (!CryptoFiat(cryptoFiat).contractActive(msg.sender))
-            revert();
+        require(CryptoFiat(cryptoFiat).contractActive(msg.sender));
         _;
     }
     function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
@@ -166,22 +158,16 @@ contract InternalData is Constants, Relay {
     function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN == FROZEN; }
 
     modifier canSend(address account) {
-        if (!_isApproved(account))
-            revert();
-        if (_isFrozen(account))
-            revert();
-
-        if (account == 0)
-            revert();
+        require(_isApproved(account));
+        require(!_isFrozen(account));
+        require(account != 0);
         _;
     }
     function assertSend(address account) constant internal canSend(account) {}
 
     modifier canReceive(address account) {
-        if (_isClosed(account))
-            revert();
-        if (account == 0)
-            revert();
+        require(!_isClosed(account));
+        require(account != 0);
         _;
     }
     function assertReceive(address account) constant internal canReceive(account) {}
@@ -190,16 +176,14 @@ contract InternalData is Constants, Relay {
     function _withdraw(address account, uint256 amount) internal {
         // check for underflow
         uint256 balance = _balanceOf(account);
-        if (balance < amount)
-            revert();
+        require(balance >= amount);
         _setBalanceOf(account, balance - amount);
     }
 
     function _deposit(address account, uint256 amount) internal {
         // check for overflow
         uint256 balance = _balanceOf(account);
-        if (balance + amount < balance)
-            revert();
+        require(balance + amount >= balance);
         _setBalanceOf(account, balance + amount);
     }
 }
@@ -236,8 +220,7 @@ contract Approving is InternalData {
         accountApprover = _accountApprover;
     }
     modifier onlyAccountApprover {
-        if (msg.sender != accountApprover)
-            revert();
+        require(msg.sender == accountApprover);
         _;
     }
     function appointAccountApprover(address next) onlyAccountApprover {
@@ -272,8 +255,7 @@ contract Reserve is InternalData {
         reserveBank = _reserveBank;
     }
     modifier onlyReserveBank {
-        if (msg.sender != reserveBank)
-            revert();
+        require(msg.sender == reserveBank);
         _;
     }
     function appointReserveBank(address next) onlyReserveBank { reserveBank = next; }
@@ -286,8 +268,7 @@ contract Reserve is InternalData {
         canReceive(reserveBank)
     {
         uint256 supply = totalSupply();
-        if (supply + amount < supply)
-            revert();
+        require(supply + amount >= supply);
         supply += amount;
         _setTotalSupply(supply);
 
@@ -303,8 +284,7 @@ contract Reserve is InternalData {
         canSend(reserveBank)
     {
         uint256 supply = _totalSupply();
-        if (supply < amount)
-            revert(); // invalid state
+        require(supply >= amount);
         supply -= amount;
         _setTotalSupply(supply);
 
@@ -330,13 +310,11 @@ contract Enforcement is InternalData {
         account = _enforcementAccount;
     }
     modifier onlyLawEnforcer {
-        if (msg.sender != lawEnforcer)
-            revert();
+        require(msg.sender == lawEnforcer);
         _;
     }
     modifier onlyAccountDesignator {
-        if (msg.sender != accountDesignator)
-            revert();
+        require(msg.sender == accountDesignator);
         _;
     }
 
@@ -366,11 +344,11 @@ contract Enforcement is InternalData {
     }
 
     // designateAccount allows changing the account
-    function designateAccount(address account)
+    function designateAccount(address _account)
         onlyAccountDesignator
-        canReceive(account)
+        canReceive(_account)
     {
-        account = account;
+        account = _account;
     }
 }
 
@@ -391,8 +369,7 @@ contract AccountRecovery is InternalData {
         canSend(from)
         canReceive(into)
     {
-        if (msg.sender != _recoveryAccountOf(from))
-            revert();
+        require(msg.sender == _recoveryAccountOf(from));
 
         // close the account
         _setStatusOf(from, _statusOf(from) | CLOSED);
@@ -424,8 +401,7 @@ contract Delegation is InternalData {
         bytes32 s;
         uint8 v;
 
-        if (signature.length != 65)
-            revert();
+        require(signature.length == 65);
 
         assembly {
             r := mload(add(signature, 32))
@@ -462,8 +438,7 @@ contract Delegation is InternalData {
 
         // protect against replayed transactions
 
-        if (_delegatedTransferNonceOf(source) >= nonce)
-            revert();
+        require(_delegatedTransferNonceOf(source) < nonce);
         _setDelegatedTransferNonceOf(source, nonce);
 
         _withdraw(source, amount + fee);
@@ -547,8 +522,7 @@ contract Delegation is InternalData {
             assertSend(xfer.source);
 
             // protect against replayed transactions
-            if (_delegatedTransferNonceOf(xfer.source) >= xfer.nonce)
-                revert();
+            require(_delegatedTransferNonceOf(xfer.source) < xfer.nonce);
             _setDelegatedTransferNonceOf(xfer.source, xfer.nonce);
 
             _withdraw(xfer.source, xfer.amount + xfer.fee);
