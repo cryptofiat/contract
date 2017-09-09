@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -8,7 +11,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"text/template"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common/compiler"
 )
 
 // deployed root contract
@@ -17,12 +24,142 @@ const rootAddress = "0xB8E7245B42529B905a8909B8FD5fC690097e71f7"
 var (
 	bindir = flag.String("bin", ".bin", "compilation output")
 	abidir = flag.String("abi", "abi", "abi directory")
+
+	solc = flag.String("solc", "solc", "compiler")
 )
 
 func main() {
 	flag.Parse()
-	compile()
-	jsabi()
+
+	contracts, err := compile(*solc, "CryptoFiat.sol")
+	if err != nil {
+		fmt.Printf("unable to compile: %v\n", err)
+		os.Exit(-1)
+	}
+
+	// remove abstract contracts
+	delete(contracts, "CryptoFiat.sol:Constants")
+	delete(contracts, "CryptoFiat.sol:Relay")
+	delete(contracts, "CryptoFiat.sol:InternalData")
+
+	var (
+		abis  []string
+		bins  []string
+		types []string
+	)
+	for name, contract := range contracts {
+		abi, _ := json.Marshal(contract.Info.AbiDefinition)
+		parts := strings.Split(name, ":")
+		typeName := parts[len(parts)-1]
+
+		abis = append(abis, string(abi))
+		bins = append(bins, contract.Code)
+		types = append(types, typeName)
+	}
+
+	code, err := bind.Bind(types, abis, bins, "main", bind.LangGo)
+	if err != nil {
+		fmt.Printf("Failed to generate ABI binding: %v\n", err)
+		os.Exit(-1)
+	}
+
+	err = ioutil.WriteFile(filepath.Join("analyse", "abi.go"), []byte(code), 0600)
+	if err != nil {
+		fmt.Printf("Failed to write ABI binding: %v\n", err)
+		os.Exit(-1)
+	}
+}
+
+// --combined-output format
+type solcOutput struct {
+	Contracts map[string]struct {
+		Bin, Abi, Devdoc, Userdoc, Metadata string
+	}
+	Version string
+}
+
+func compile(solc string, sourcefiles ...string) (map[string]*compiler.Contract, error) {
+	if len(sourcefiles) == 0 {
+		return nil, errors.New("solc: no source files")
+	}
+
+	source, err := slurpFiles(sourcefiles)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := compiler.SolidityVersion(solc)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []string{
+		"--combined-json", "bin,abi,userdoc,devdoc,metadata",
+		"--add-std",                  // include standard lib contracts
+		"--optimize",                 // code optimizer switched on
+		"--optimize-runs", "1000000", // optimize as much as possible
+		"--",
+	}
+	cmd := exec.Command(s.Path, append(args, sourcefiles...)...)
+	return runCompiler(s, args, cmd, source)
+}
+
+func runCompiler(s *compiler.Solidity, args []string, cmd *exec.Cmd, source string) (map[string]*compiler.Contract, error) {
+	var stderr, stdout bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("solc: %v\n%s", err, stderr.Bytes())
+	}
+	var output solcOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		return nil, err
+	}
+
+	// Compilation succeeded, assemble and return the contracts.
+	contracts := make(map[string]*compiler.Contract)
+	for name, info := range output.Contracts {
+		// Parse the individual compilation results.
+		var abi interface{}
+		if err := json.Unmarshal([]byte(info.Abi), &abi); err != nil {
+			return nil, fmt.Errorf("solc: error reading abi definition (%v)", err)
+		}
+		var userdoc interface{}
+		if err := json.Unmarshal([]byte(info.Userdoc), &userdoc); err != nil {
+			return nil, fmt.Errorf("solc: error reading user doc: %v", err)
+		}
+		var devdoc interface{}
+		if err := json.Unmarshal([]byte(info.Devdoc), &devdoc); err != nil {
+			return nil, fmt.Errorf("solc: error reading dev doc: %v", err)
+		}
+		contracts[name] = &compiler.Contract{
+			Code: "0x" + info.Bin,
+			Info: compiler.ContractInfo{
+				Source:          source,
+				Language:        "Solidity",
+				LanguageVersion: s.Version,
+				CompilerVersion: s.Version,
+				CompilerOptions: strings.Join(args, " "),
+				AbiDefinition:   abi,
+				UserDoc:         userdoc,
+				DeveloperDoc:    devdoc,
+				Metadata:        info.Metadata,
+			},
+		}
+	}
+	return contracts, nil
+}
+
+func slurpFiles(files []string) (string, error) {
+	var concat bytes.Buffer
+	for _, file := range files {
+		content, err := ioutil.ReadFile(file)
+		if err != nil {
+			return "", err
+		}
+		concat.Write(content)
+	}
+	return concat.String(), nil
 }
 
 func checkf(err error, format string) {
@@ -31,21 +168,6 @@ func checkf(err error, format string) {
 	}
 	fmt.Fprintf(os.Stderr, format+"\n", err)
 	os.Exit(1)
-}
-
-func compile() {
-	os.MkdirAll(*bindir, 0755)
-	data, err := solc(
-		"-o", *bindir,
-		"--bin", "--abi", "--asm", "--gas",
-		"--optimize", "--optimize-runs", "100000",
-		"--overwrite",
-
-		"CryptoFiat.sol",
-	)
-
-	checkf(err, "solc failed: %v \n"+string(data))
-	ioutil.WriteFile(filepath.Join(*bindir, "_gas.log"), data, 0755)
 }
 
 var SubConstractID = map[string]int{
@@ -133,6 +255,6 @@ var {{ .Name }} = Contract.Accounts.at(CryptoFiat.contracts({{ .ID }}));
 {{- end }}
 `))
 
-func solc(args ...string) ([]byte, error) {
+func solcx(args ...string) ([]byte, error) {
 	return exec.Command("solc", args...).CombinedOutput()
 }

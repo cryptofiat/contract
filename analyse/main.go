@@ -19,8 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
-//go:generate abigen --sol ../CryptoFiat.sol --pkg main --out abi.go
-
 // Accounts
 var (
 	// Master Roles
