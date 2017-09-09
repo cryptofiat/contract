@@ -1,1 +1,0 @@
-go generate . && go build . && ./analyse

@@ -443,3 +443,9 @@ func newBackend(initialBalance *big.Int, accounts ...*account) *backends.Simulat
 	}
 	return backends.NewSimulatedBackend(alloc)
 }
+
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
