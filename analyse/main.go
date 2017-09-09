@@ -99,13 +99,18 @@ func main() {
 	stats.add("deploy", "cryptofiat", tx, err)
 	backend.Commit()
 
-	// deploy contracts
+	// deploy and attach Data contract
 	dataAddress, tx, data, err := contract.DeployData(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "data", tx, err)
 	backend.Commit()
 	_ = data
 
+	tx, err = cryptofiat.Upgrade(master.tx(0), DATA, dataAddress)
+	stats.add("upgrade", "data", tx, err)
+	backend.Commit()
+
+	// update all other contracts
 	accountsAddress, tx, accounts, err := contract.DeployAccounts(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "accounts", tx, err)
@@ -137,12 +142,7 @@ func main() {
 	stats.add("deploy", "delegation", tx, err)
 	backend.Commit()
 
-	{
-		// upgrade contracts
-		tx, err = cryptofiat.Upgrade(master.tx(0), DATA, dataAddress)
-		stats.add("upgrade", "data", tx, err)
-		backend.Commit()
-
+	{ // attach all other contracts
 		tx, err = cryptofiat.Upgrade(master.tx(0), ACCOUNTS, accountsAddress)
 		stats.add("upgrade", "accounts", tx, err)
 		backend.Commit()

@@ -5,7 +5,7 @@ contract CryptoFiat {
     modifier onlyMasterAccount {
         require(msg.sender == masterAccount);
         _ ;
-    }
+    } 
 
     // lookup table for finding a particular contract by ID
     mapping(uint256 => address) public contractAddress;
@@ -52,6 +52,34 @@ contract CryptoFiat {
     }
 }
 
+contract Data {
+    CryptoFiat public cryptoFiat;
+
+    function Data(CryptoFiat _cryptoFiat) {
+        cryptoFiat = _cryptoFiat;
+    }
+
+    modifier onlyContracts {
+        require(cryptoFiat.contractActive(msg.sender));
+        _;
+    }
+    
+    mapping(bytes32 => bytes32) private _data;
+
+    function set(uint256 bucket, bytes32 key, bytes32 value)
+        onlyContracts
+    {
+        _data[sha3(bucket, key)] = value;
+    }
+
+    function get(uint256 bucket, bytes32 key)
+        constant
+        returns (bytes32)
+    {
+        return _data[sha3(bucket, key)];
+    }
+}
+
 contract Constants {
     // contract id
     uint256 constant DATA             = 1;
@@ -85,72 +113,49 @@ contract Constants {
     event SupplyChanged(uint256 totalSupply);
 }
 
-contract Relay is Constants {
-    address public cryptoFiat;
+contract InternalData is Constants {
+    CryptoFiat public cryptoFiat;
+    Data       public data;
 
     modifier onlyMasterAccount {
         require(CryptoFiat(cryptoFiat).masterAccount() == msg.sender);
         _;
     }
-    modifier onlyContracts {
-        require(CryptoFiat(cryptoFiat).contractActive(msg.sender));
-        _;
+    function switchCryptoFiat(CryptoFiat next) onlyMasterAccount { cryptoFiat = next; }
+    function switchData(Data next) onlyMasterAccount { data = next; }
+    function cacheData()  internal {
+        data = Data(contractAddress(DATA));
+        require(address(data) != 0);
     }
-    function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
 
     function contractAddress(uint256 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).contractAddress(id); }
 
-    function data() constant internal returns (Data) { return Data(contractAddress(DATA)); }
     function accounts() constant internal returns (Accounts) { return Accounts(contractAddress(ACCOUNTS)); }
     function approving() constant internal returns (Approving) { return Approving(contractAddress(APPROVING)); }
     function reserve() constant internal returns (Reserve) { return Reserve(contractAddress(RESERVE)); }
     function enforcement() constant internal returns (Enforcement) { return Enforcement(contractAddress(ENFORCEMENT)); }
     function accountRecovery() constant internal returns (AccountRecovery) { return AccountRecovery(contractAddress(ACCOUNT_RECOVERY)); }
     function delegation() constant internal returns (Delegation) { return Delegation(contractAddress(DELEGATION)); }
-}
 
-contract Data is Relay {
-    function Data(address _cryptoFiat) {
-        cryptoFiat = _cryptoFiat;
-    }
-
-    mapping(bytes32 => bytes32) private _data;
-
-    function set(uint256 bucket, bytes32 key, bytes32 value)
-        onlyContracts
-    {
-        _data[sha3(bucket, key)] = value;
-    }
-
-    function get(uint256 bucket, bytes32 key)
-        constant
-        returns (bytes32)
-    {
-        return _data[sha3(bucket, key)];
-    }
-}
-
-
-contract InternalData is Constants, Relay {
     // balance contains the balance of an account
-    function _balanceOf(address addr) constant internal returns (uint256) { return uint256(data().get(BALANCE, bytes32(addr))); }
-    function _setBalanceOf(address addr, uint256 value) internal { data().set(BALANCE, bytes32(addr), bytes32(value)); }
+    function _balanceOf(address addr) constant internal returns (uint256) { return uint256(data.get(BALANCE, bytes32(addr))); }
+    function _setBalanceOf(address addr, uint256 value) internal { data.set(BALANCE, bytes32(addr), bytes32(value)); }
 
     // state contains the current state of an account
-    function _statusOf(address addr) constant internal returns (uint256) { return uint256(data().get(STATUS, bytes32(addr))); }
-    function _setStatusOf(address addr, uint256 value) internal { data().set(STATUS, bytes32(addr), bytes32(value)); }
+    function _statusOf(address addr) constant internal returns (uint256) { return uint256(data.get(STATUS, bytes32(addr))); }
+    function _setStatusOf(address addr, uint256 value) internal { data.set(STATUS, bytes32(addr), bytes32(value)); }
 
     // delegated trancfer nonce contains the last nonce used in delegatedTransfer
-    function _delegatedTransferNonceOf(address addr) constant internal returns (uint256) { return uint256(data().get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
-    function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data().set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
+    function _delegatedTransferNonceOf(address addr) constant internal returns (uint256) { return uint256(data.get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
+    function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data.set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
 
     // recovery account contains a fallback account that can be used to recover funds
-    function _recoveryAccountOf(address addr) constant internal returns (address) { return address(data().get(RECOVERY_ACCOUNT, bytes32(addr))); }
-    function _setRecoveryAccountOf(address addr, address value) internal { data().set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
+    function _recoveryAccountOf(address addr) constant internal returns (address) { return address(data.get(RECOVERY_ACCOUNT, bytes32(addr))); }
+    function _setRecoveryAccountOf(address addr, address value) internal { data.set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
 
     // totalSupply is the total amount of tokens in circulation
-    function _totalSupply() constant internal returns (uint256) { return uint256(data().get(TOTAL_SUPPLY, bytes32(0))); }
-    function _setTotalSupply(uint256 value) internal { data().set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
+    function _totalSupply() constant internal returns (uint256) { return uint256(data.get(TOTAL_SUPPLY, bytes32(0))); }
+    function _setTotalSupply(uint256 value) internal { data.set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
 
     // for checking account status
     function _isApproved(address account) constant internal returns (bool) { return _statusOf(account) & APPROVED == APPROVED; }
@@ -189,8 +194,9 @@ contract InternalData is Constants, Relay {
 }
 
 contract Accounts is InternalData {
-    function Accounts(address _cryptoFiat) {
+    function Accounts(CryptoFiat _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
     }
 
     // balance contains the balance of an account
@@ -215,8 +221,9 @@ contract Accounts is InternalData {
 
 contract Approving is InternalData {
     address public accountApprover;
-    function Approving(address _cryptoFiat, address _accountApprover) {
+    function Approving(CryptoFiat _cryptoFiat, address _accountApprover) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
         accountApprover = _accountApprover;
     }
     modifier onlyAccountApprover {
@@ -250,8 +257,9 @@ contract Approving is InternalData {
 
 contract Reserve is InternalData {
     address public reserveBank;
-    function Reserve(address _cryptoFiat, address _reserveBank) {
+    function Reserve(CryptoFiat _cryptoFiat, address _reserveBank) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
         reserveBank = _reserveBank;
     }
     modifier onlyReserveBank {
@@ -302,8 +310,9 @@ contract Enforcement is InternalData {
     address public accountDesignator;
     address public account;
 
-    function Enforcement(address _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount) {
+    function Enforcement(CryptoFiat _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
         lawEnforcer = _lawEnforcer;
 
         accountDesignator = _enforcementAccountDesignator;
@@ -353,8 +362,9 @@ contract Enforcement is InternalData {
 }
 
 contract AccountRecovery is InternalData {
-    function AccountRecovery(address _cryptoFiat) {
+    function AccountRecovery(CryptoFiat _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
     }
 
     // designateRecoveryAccount allows msg.sender to specify a trusted account
@@ -385,8 +395,9 @@ contract AccountRecovery is InternalData {
 }
 
 contract Delegation is InternalData {
-    function Delegation(address _cryptoFiat) {
+    function Delegation(CryptoFiat _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
+        cacheData();
     }
 
     function nonceOf(address account) constant returns (uint256) {
