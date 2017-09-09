@@ -1,4 +1,9 @@
 *~*
+.DS_Store
+
+# binaries
+*.exe
+analyse/analyse
 
 # Logs
 logs
