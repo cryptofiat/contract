@@ -1,9 +1,10 @@
-pragma solidity ^0.4.10;
+pragma solidity ^0.4.16;
 
 contract CryptoFiat {
     address public masterAccount;
     modifier onlyMasterAccount {
-        if(msg.sender != masterAccount) throw;
+        if (msg.sender != masterAccount)
+            revert();
         _ ;
     }
 
@@ -18,7 +19,7 @@ contract CryptoFiat {
     address[] public contracts;
     function contractsLength() constant returns (uint256) { return contracts.length; }
 
-    function CryptoFiat(){
+    function CryptoFiat() {
         masterAccount = msg.sender;
         contracts.push(address(this));
     }
@@ -27,24 +28,29 @@ contract CryptoFiat {
 
     event ContractUpgraded(uint256 indexed id, address previous, address next);
     function upgrade(uint256 id, address next) {
-        if(id == 0) throw;
+        if (id == 0)
+            revert();
         address prev = contractAddress[id];
 
-        if(prev == next) throw;
+        if (prev == next)
+            revert();
 
         // message sender or the previous contract
         bool canUpgrade = (msg.sender == masterAccount) || (msg.sender == prev);
-        if(!canUpgrade) throw;
+        if (!canUpgrade)
+            revert();
 
         // check double use of contract
-        if(contractActive(next)) throw;
+        if (contractActive(next))
+            revert();
 
         // disable previous contract
         contractId[prev] = 0;
 
         // activate next contract
         contractAddress[id] = next;
-        if(next != 0) contractId[next] = id;
+        if (next != 0)
+            contractId[next] = id;
 
         // finalize
         ContractUpgraded(id, prev, next);
@@ -89,11 +95,13 @@ contract Relay is Constants {
     address public cryptoFiat;
 
     modifier onlyMasterAccount {
-        if(CryptoFiat(cryptoFiat).masterAccount() != msg.sender) throw;
+        if (CryptoFiat(cryptoFiat).masterAccount() != msg.sender)
+            revert();
         _;
     }
     modifier onlyContracts {
-        if(!CryptoFiat(cryptoFiat).contractActive(msg.sender)) throw;
+        if (!CryptoFiat(cryptoFiat).contractActive(msg.sender))
+            revert();
         _;
     }
     function switchCryptoFiat(address next) onlyMasterAccount { cryptoFiat = next; }
@@ -154,21 +162,26 @@ contract InternalData is Constants, Relay {
 
     // for checking account status
     function _isApproved(address account) constant internal returns (bool) { return _statusOf(account) & APPROVED == APPROVED; }
-    function _isClosed(address account)   constant internal returns (bool) { return _statusOf(account) & CLOSED   == CLOSED;   }
-    function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN   == FROZEN;   }
+    function _isClosed(address account)   constant internal returns (bool) { return _statusOf(account) & CLOSED == CLOSED; }
+    function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN == FROZEN; }
 
     modifier canSend(address account) {
-        if(!_isApproved(account)) throw;
-        if(_isFrozen(account)) throw;
+        if (!_isApproved(account))
+            revert();
+        if (_isFrozen(account))
+            revert();
 
-        if(account == 0) throw;
+        if (account == 0)
+            revert();
         _;
     }
     function assertSend(address account) constant internal canSend(account) {}
 
     modifier canReceive(address account) {
-        if(_isClosed(account)) throw;
-        if(account == 0) throw;
+        if (_isClosed(account))
+            revert();
+        if (account == 0)
+            revert();
         _;
     }
     function assertReceive(address account) constant internal canReceive(account) {}
@@ -177,20 +190,22 @@ contract InternalData is Constants, Relay {
     function _withdraw(address account, uint256 amount) internal {
         // check for underflow
         uint256 balance = _balanceOf(account);
-        if(balance < amount) throw;
+        if (balance < amount)
+            revert();
         _setBalanceOf(account, balance - amount);
     }
 
     function _deposit(address account, uint256 amount) internal {
         // check for overflow
         uint256 balance = _balanceOf(account);
-        if(balance + amount < balance) throw;
+        if (balance + amount < balance)
+            revert();
         _setBalanceOf(account, balance + amount);
     }
 }
 
 contract Accounts is InternalData {
-    function Accounts(address _cryptoFiat){
+    function Accounts(address _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
     }
 
@@ -216,11 +231,15 @@ contract Accounts is InternalData {
 
 contract Approving is InternalData {
     address public accountApprover;
-    function Approving(address _cryptoFiat, address _accountApprover){
+    function Approving(address _cryptoFiat, address _accountApprover) {
         cryptoFiat = _cryptoFiat;
         accountApprover = _accountApprover;
     }
-    modifier onlyAccountApprover { if(msg.sender != accountApprover) throw; _; }
+    modifier onlyAccountApprover {
+        if (msg.sender != accountApprover)
+            revert();
+        _;
+    }
     function appointAccountApprover(address next) onlyAccountApprover {
         accountApprover = next;
     }
@@ -233,7 +252,7 @@ contract Approving is InternalData {
 
     // approveAccounts approves multiple accounts
     function approveAccounts(address[] accounts) {
-        for(uint i = 0; i < accounts.length; i += 1){
+        for (uint i = 0; i < accounts.length; i += 1) {
             approveAccount(accounts[i]);
         }
     }
@@ -248,11 +267,15 @@ contract Approving is InternalData {
 
 contract Reserve is InternalData {
     address public reserveBank;
-    function Reserve(address _cryptoFiat, address _reserveBank){
+    function Reserve(address _cryptoFiat, address _reserveBank) {
         cryptoFiat = _cryptoFiat;
         reserveBank = _reserveBank;
     }
-    modifier onlyReserveBank { if(msg.sender != reserveBank) throw; _; }
+    modifier onlyReserveBank {
+        if (msg.sender != reserveBank)
+            revert();
+        _;
+    }
     function appointReserveBank(address next) onlyReserveBank { reserveBank = next; }
 
     function totalSupply() constant returns (uint256) { return _totalSupply(); }
@@ -263,7 +286,8 @@ contract Reserve is InternalData {
         canReceive(reserveBank)
     {
         uint256 supply = totalSupply();
-        if(supply + amount < supply) throw;
+        if (supply + amount < supply)
+            revert();
         supply += amount;
         _setTotalSupply(supply);
 
@@ -279,7 +303,8 @@ contract Reserve is InternalData {
         canSend(reserveBank)
     {
         uint256 supply = _totalSupply();
-        if(supply < amount) throw; // invalid state
+        if (supply < amount)
+            revert(); // invalid state
         supply -= amount;
         _setTotalSupply(supply);
 
@@ -297,15 +322,23 @@ contract Enforcement is InternalData {
     address public accountDesignator;
     address public account;
 
-    function Enforcement(address _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount){
+    function Enforcement(address _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount) {
         cryptoFiat = _cryptoFiat;
         lawEnforcer = _lawEnforcer;
 
         accountDesignator = _enforcementAccountDesignator;
         account = _enforcementAccount;
     }
-    modifier onlyLawEnforcer { if(msg.sender != lawEnforcer) throw; _; }
-    modifier onlyAccountDesignator { if(msg.sender != accountDesignator) throw; _; }
+    modifier onlyLawEnforcer {
+        if (msg.sender != lawEnforcer)
+            revert();
+        _;
+    }
+    modifier onlyAccountDesignator {
+        if (msg.sender != accountDesignator)
+            revert();
+        _;
+    }
 
     function appointLawEnforcer(address next) onlyLawEnforcer { lawEnforcer = next; }
     function appointAccountDesignator(address next) onlyAccountDesignator { accountDesignator = next; }
@@ -342,13 +375,13 @@ contract Enforcement is InternalData {
 }
 
 contract AccountRecovery is InternalData {
-    function AccountRecovery(address _cryptoFiat){
+    function AccountRecovery(address _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
     }
 
     // designateRecoveryAccount allows msg.sender to specify a trusted account
     // that can recover the tokens
-    function designateRecoveryAccount(address recoveryAccount){
+    function designateRecoveryAccount(address recoveryAccount) {
         _setRecoveryAccountOf(msg.sender, recoveryAccount);
     }
 
@@ -358,7 +391,8 @@ contract AccountRecovery is InternalData {
         canSend(from)
         canReceive(into)
     {
-        if(msg.sender != _recoveryAccountOf(from)) throw;
+        if (msg.sender != _recoveryAccountOf(from))
+            revert();
 
         // close the account
         _setStatusOf(from, _statusOf(from) | CLOSED);
@@ -374,11 +408,13 @@ contract AccountRecovery is InternalData {
 }
 
 contract Delegation is InternalData {
-    function Delegation(address _cryptoFiat){
+    function Delegation(address _cryptoFiat) {
         cryptoFiat = _cryptoFiat;
     }
 
-    function nonceOf(address account) constant returns (uint256) { return _delegatedTransferNonceOf(account); }
+    function nonceOf(address account) constant returns (uint256) {
+        return _delegatedTransferNonceOf(account);
+    }
 
     function recoverSigner(bytes32 hash, bytes signature)
         internal
@@ -388,7 +424,8 @@ contract Delegation is InternalData {
         bytes32 s;
         uint8 v;
 
-        if(signature.length != 65) throw;
+        if (signature.length != 65)
+            revert();
 
         assembly {
             r := mload(add(signature, 32))
@@ -396,7 +433,7 @@ contract Delegation is InternalData {
             v := and(mload(add(signature, 65)), 255)
         }
 
-        if(v < 27){
+        if (v < 27) {
             v += 27;
         }
 
@@ -425,20 +462,21 @@ contract Delegation is InternalData {
 
         // protect against replayed transactions
 
-        if(_delegatedTransferNonceOf(source) >= nonce) throw;
+        if (_delegatedTransferNonceOf(source) >= nonce)
+            revert();
         _setDelegatedTransferNonceOf(source, nonce);
 
         _withdraw(source, amount + fee);
         _deposit(destination, amount);
 
         Transfer(source, destination, amount);
-        if(fee > 0){
+        if (fee > 0) {
             _deposit(delegate, fee);
             Transfer(source, delegate, fee);
         }
     }
 
-    uint constant xfersize = 32+32+32+32+32+32+1;
+    uint constant XFER_SIZE = 32+32+32+32+32+32+1;
     // expected format
     // struct XferEncoded {
     //     uint256 nonce;
@@ -462,7 +500,7 @@ contract Delegation is InternalData {
         internal
         returns (Xfer)
     {
-        uint base = xfersize * offset;
+        uint base = XFER_SIZE * offset;
 
         uint256 nonce;
         address destination;
@@ -481,7 +519,7 @@ contract Delegation is InternalData {
             s := mload(add(data, 192))
             v := and(mload(add(data, 193)), 255)
         }
-        if(v < 27){
+        if (v < 27) {
             v += 27;
         }
 
@@ -502,21 +540,22 @@ contract Delegation is InternalData {
         bytes   transfers,
         address delegate
     ) {
-        for(uint i = 0; i < count; i++){
+        for (uint i = 0; i < count; i++) {
             Xfer memory xfer = recoverXfer(transfers, i);
 
             // check whether source can send
             assertSend(xfer.source);
 
             // protect against replayed transactions
-            if(_delegatedTransferNonceOf(xfer.source) >= xfer.nonce) throw;
+            if (_delegatedTransferNonceOf(xfer.source) >= xfer.nonce)
+                revert();
             _setDelegatedTransferNonceOf(xfer.source, xfer.nonce);
 
             _withdraw(xfer.source, xfer.amount + xfer.fee);
             _deposit(xfer.destination, xfer.amount);
 
             Transfer(xfer.source, xfer.destination, xfer.amount);
-            if(xfer.fee > 0){
+            if (xfer.fee > 0) {
                 _deposit(delegate, xfer.fee);
                 Transfer(xfer.source, delegate, xfer.fee);
             }
