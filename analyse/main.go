@@ -369,7 +369,6 @@ func newDelegatedTransfer(
 func (xfer *delegatedTransfer) Bytes() []byte {
 	var data []byte
 	data = append(data, big256(xfer.nonce)...)
-	data = append(data, big256(xfer.nonce)...)
 	data = append(data, xfer.destination[:]...)
 	data = append(data, big256(xfer.amount)...)
 	data = append(data, big256(xfer.fee)...)

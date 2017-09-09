@@ -451,16 +451,16 @@ contract Delegation is InternalData {
         }
     }
 
-    uint constant XFER_SIZE = 32+32+32+32+32+32+1;
+    uint constant XFER_SIZE = 32+20+32+32+(32+32+1);
     // expected format
     // struct XferEncoded {
-    //     uint256 nonce;
-    //     address destination;
-    //     uint256 amount;
-    //     uint256 fee;
-    //     bytes32 r;
-    //     bytes32 s;
-    //     uint8   v;
+    //     uint256 nonce;       // 32 =  32
+    //     address destination; // 20 =  52
+    //     uint256 amount;      // 32 =  84
+    //     uint256 fee;         // 32 = 116
+    //     bytes32 r;           // 32 = 148
+    //     bytes32 s;           // 32 = 180
+    //     uint8   v;           //  1 = 181
     // }
 
     struct Xfer {
@@ -476,7 +476,7 @@ contract Delegation is InternalData {
         returns (Xfer)
     {
         uint base = XFER_SIZE * offset;
-
+       
         uint256 nonce;
         address destination;
         uint256 amount;
@@ -486,13 +486,14 @@ contract Delegation is InternalData {
         uint8 v;
 
         assembly {
+            data := add(data, base)
             nonce := mload(add(data, 32))
-            destination := mload(add(data, 64))
-            amount := mload(add(data, 96))
-            fee := mload(add(data, 128))
-            r := mload(add(data, 160))
-            s := mload(add(data, 192))
-            v := and(mload(add(data, 193)), 255)
+            destination := mload(add(data, 52))
+            amount := mload(add(data, 84))
+            fee := mload(add(data, 116))
+            r := mload(add(data, 148))
+            s := mload(add(data, 180))
+            v := and(mload(add(data, 181)), 255)
         }
         if (v < 27) {
             v += 27;
