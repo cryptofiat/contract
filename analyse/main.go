@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
 //go:generate abigen --sol ../CryptoFiat.sol --pkg main --out abi.go
@@ -29,7 +30,9 @@ var (
 
 	lawEnforcer                 = newAccount("law enforcer", `760902010f6bc423120fe197d487a32edb7f72f104298325e4584d28d9335bde`)
 	enforcmentAccountDesignator = newAccount("enforcement account designator", `bd4132d9b7d1e93553bd7bc831a85b6005de4d131b701c5d9ea8ab78a0952538`)
-	enforcmentAccount           = newAccount("enforcement account", `c6a3aecca53233a72c68cd05efd350011bac46b75754b3d1a60f58c2efd70732`)
+	enforcmentAccount           = newAccount("enforcement account", `c6a3afcca53233a72c68cd05efd350011bac46b75754b3d1a60f58c2efd70732`)
+
+	delegationServer = newAccount("delegation server", `c6a3afcca53233a72c68cd05efd352011bac46b75754b3d1a60f58c2efd70732`)
 
 	// Users
 	alice = newAccount("alice", `9ba72a7d290bc324b9bc0999ad46b37c8e8e31c6dc850ec8d6008896a3318a6c`)
@@ -51,6 +54,8 @@ var (
 		enforcmentAccountDesignator,
 		enforcmentAccount,
 
+		delegationServer,
+
 		alice,
 		bob,
 		carol,
@@ -60,6 +65,9 @@ var (
 	approveAddresses = []common.Address{
 		reserveBank.Address,
 		enforcmentAccount.Address,
+
+		delegationServer.Address,
+
 		alice.Address,
 		bob.Address,
 		carol.Address,
@@ -232,8 +240,58 @@ func main() {
 		backend.Commit()
 	}
 
-	_ = accountRecovery
-	_ = delegation
+	{ // account recovery
+		tx, err = accountRecovery.DesignateRecoveryAccount(erin.tx(0), carol.Address)
+		stats.add("account recovery", "designate account erin", tx, err)
+		backend.Commit()
+
+		tx, err = accountRecovery.RecoverBalance(carol.tx(0), erin.Address, bob.Address)
+		stats.add("account recovery", "recover balance", tx, err)
+		backend.Commit()
+	}
+
+	{ // delegated transfer
+		xfer := newDelegatedTransfer(alice, big.NewInt(1), bob.Address, big.NewInt(5000), big.NewInt(20))
+		tx, err = delegation.Transfer(delegationServer.tx(0),
+			xfer.nonce, xfer.destination, xfer.amount, xfer.fee, xfer.signature,
+			delegationServer.Address)
+		stats.add("delegation", "alice -> bob", tx, err)
+		backend.Commit()
+
+		xfer = newDelegatedTransfer(alice, big.NewInt(2), bob.Address, big.NewInt(5000), big.NewInt(20))
+		tx, err = delegation.Transfer(delegationServer.tx(0),
+			xfer.nonce, xfer.destination, xfer.amount, xfer.fee, xfer.signature,
+			delegationServer.Address)
+		stats.add("delegation", "alice -> bob", tx, err)
+		backend.Commit()
+
+		var xfers []*delegatedTransfer
+		xfer = newDelegatedTransfer(alice, big.NewInt(3), bob.Address, big.NewInt(100), big.NewInt(10))
+		xfers = append(xfers, xfer)
+		tx, err = delegation.Multitransfer(delegationServer.tx(0),
+			big.NewInt(int64(len(xfers))),
+			delegatedTransfersToBytes(xfers),
+			delegationServer.Address)
+		stats.add("multi delegation", "1x [alice  -> bob]", tx, err)
+		backend.Commit()
+
+		xfers = []*delegatedTransfer{}
+		xfer = newDelegatedTransfer(alice, big.NewInt(4), bob.Address, big.NewInt(100), big.NewInt(10))
+		xfers = append(xfers, xfer)
+		xfer = newDelegatedTransfer(bob, big.NewInt(1), alice.Address, big.NewInt(100), big.NewInt(10))
+		xfers = append(xfers, xfer)
+		xfer = newDelegatedTransfer(alice, big.NewInt(5), bob.Address, big.NewInt(100), big.NewInt(10))
+		xfers = append(xfers, xfer)
+		xfer = newDelegatedTransfer(bob, big.NewInt(2), alice.Address, big.NewInt(100), big.NewInt(10))
+		xfers = append(xfers, xfer)
+
+		tx, err = delegation.Multitransfer(delegationServer.tx(0),
+			big.NewInt(int64(len(xfers))),
+			delegatedTransfersToBytes(xfers),
+			delegationServer.Address)
+		stats.add("multi delegation", "4x [alice <-> bob]", tx, err)
+		backend.Commit()
+	}
 
 	{ // print final stats
 		w := new(tabwriter.Writer)
@@ -258,12 +316,81 @@ func main() {
 			check(err)
 
 			used := rcpt.GasUsed
+			usedUpGas := ""
+			if used.Cmp(big.NewInt(4000000)) > 0 {
+				// when something fails it will use up all the gas which is ~4e6
+				usedUpGas = "gas exhausted"
+			}
+			if rcpt.Failed {
+				usedUpGas = "failed"
+			}
+
 			fmt.Fprintf(w, "%v\t%v\t%v\t%0.2f€\t%0.2f€\t%0.2f€\t%0.2f€\t%v\n",
 				category, transaction.name,
 				used, price(used, 1, EthEur), price(used, 5, EthEur), price(used, 20, EthEur), price(used, 40, EthEur),
-				"")
+				usedUpGas)
 		}
 	}
+}
+
+type delegatedTransfer struct {
+	nonce       *big.Int
+	destination common.Address
+	amount      *big.Int
+	fee         *big.Int
+	signature   []byte
+}
+
+func newDelegatedTransfer(
+	source *account, nonce *big.Int,
+	destination common.Address, amount *big.Int,
+	fee *big.Int) *delegatedTransfer {
+
+	xfer := &delegatedTransfer{}
+	xfer.nonce = nonce
+	xfer.destination = destination
+	xfer.amount = amount
+	xfer.fee = fee
+
+	hw := sha3.NewKeccak256()
+	hw.Write(big256(xfer.nonce))
+	hw.Write(xfer.destination[:])
+	hw.Write(big256(xfer.amount))
+	hw.Write(big256(xfer.fee))
+	hash := hw.Sum(nil)
+
+	sig, err := crypto.Sign(hash[:], source.Key)
+	check(err)
+	xfer.signature = sig
+
+	return xfer
+}
+
+func (xfer *delegatedTransfer) Bytes() []byte {
+	var data []byte
+	data = append(data, big256(xfer.nonce)...)
+	data = append(data, big256(xfer.nonce)...)
+	data = append(data, xfer.destination[:]...)
+	data = append(data, big256(xfer.amount)...)
+	data = append(data, big256(xfer.fee)...)
+	data = append(data, xfer.signature...)
+	return data
+}
+
+func delegatedTransfersToBytes(xfers []*delegatedTransfer) []byte {
+	var data []byte
+	for _, xfer := range xfers {
+		data = append(data, xfer.Bytes()...)
+	}
+	return data
+}
+
+func big256(v *big.Int) []byte {
+	var r [32]byte
+	data := v.Bytes()
+	off := 32 - len(data)
+	copy(r[off:], data)
+	return r[:]
 }
 
 const EthEur = 250
