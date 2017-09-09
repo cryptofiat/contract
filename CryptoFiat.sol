@@ -163,8 +163,9 @@ contract InternalData is Constants {
     function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN == FROZEN; }
 
     modifier canSend(address account) {
-        require(_isApproved(account));
-        require(!_isFrozen(account));
+        uint256 status = _statusOf(account);
+        require(status & APPROVED == APPROVED);
+        require(status & FROZEN   != FROZEN);
         require(account != 0);
         _;
     }
@@ -526,12 +527,15 @@ contract Delegation is InternalData {
         uint256 count,
         bytes   transfers,
         address delegate
-    ) {
+    )
+        canReceive(delegate)
+    {
         for (uint i = 0; i < count; i++) {
             Xfer memory xfer = recoverXfer(transfers, i);
 
             // check whether source can send
             assertSend(xfer.source);
+            assertReceive(xfer.destination);
 
             // protect against replayed transactions
             require(_delegatedTransferNonceOf(xfer.source) < xfer.nonce);
