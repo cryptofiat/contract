@@ -1,3 +1,5 @@
+// +build ignore
+
 package main
 
 import (
@@ -9,8 +11,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -31,17 +31,37 @@ var (
 func main() {
 	flag.Parse()
 
-	contracts, err := compile(*solc, "CryptoFiat.sol")
+	originalContracts, err := compile(*solc, "CryptoFiat.sol")
 	if err != nil {
 		fmt.Printf("unable to compile: %v\n", err)
 		os.Exit(-1)
 	}
+	contracts := make(map[string]*compiler.Contract)
+	for name, contract := range originalContracts {
+		parts := strings.Split(name, ":")
+		typeName := parts[len(parts)-1]
+		contracts[typeName] = contract
+	}
 
 	// remove abstract contracts
-	delete(contracts, "CryptoFiat.sol:Constants")
-	delete(contracts, "CryptoFiat.sol:Relay")
-	delete(contracts, "CryptoFiat.sol:InternalData")
+	delete(contracts, "Constants")
+	delete(contracts, "Relay")
+	delete(contracts, "InternalData")
 
+	err = WriteBind(contracts, "contract", "abi.go", bind.LangGo)
+	if err != nil {
+		fmt.Printf("go binding: %v\n", err)
+		os.Exit(-1)
+	}
+
+	err = WriteBind(contracts, "eu.cryptoeuro.contract", "abi.java", bind.LangJava)
+	if err != nil {
+		fmt.Printf("java binding: %v\n", err)
+		os.Exit(-1)
+	}
+}
+
+func WriteBind(contracts map[string]*compiler.Contract, pkg, file string, lang bind.Lang) error {
 	var (
 		abis  []string
 		bins  []string
@@ -49,25 +69,23 @@ func main() {
 	)
 	for name, contract := range contracts {
 		abi, _ := json.Marshal(contract.Info.AbiDefinition)
-		parts := strings.Split(name, ":")
-		typeName := parts[len(parts)-1]
 
 		abis = append(abis, string(abi))
 		bins = append(bins, contract.Code)
-		types = append(types, typeName)
+		types = append(types, name)
 	}
 
-	code, err := bind.Bind(types, abis, bins, "main", bind.LangGo)
+	code, err := bind.Bind(types, abis, bins, pkg, lang)
 	if err != nil {
-		fmt.Printf("Failed to generate ABI binding: %v\n", err)
-		os.Exit(-1)
+		return fmt.Errorf("failed to create binding: %v", err)
 	}
 
-	err = ioutil.WriteFile(filepath.Join("analyse", "abi.go"), []byte(code), 0600)
+	err = ioutil.WriteFile(file, []byte(code), 0600)
 	if err != nil {
-		fmt.Printf("Failed to write ABI binding: %v\n", err)
-		os.Exit(-1)
+		return fmt.Errorf("failed to write file: %v", err)
 	}
+
+	return nil
 }
 
 // --combined-output format
@@ -181,7 +199,8 @@ var SubConstractID = map[string]int{
 	"MultiDelegation": 7,
 }
 
-func jsabi() {
+/*
+func WriteJS(contracts map) {
 	os.MkdirAll(*abidir, 0755)
 
 	matches, err := filepath.Glob(filepath.Join(*bindir, "*.abi"))
@@ -237,7 +256,7 @@ func jsabi() {
 	})
 	checkf(err, "template: %v")
 }
-
+*/
 var jsabi_template = template.Must(template.New("").Parse(`
 // GENERATED CODE
 // DO NOT MODIFY

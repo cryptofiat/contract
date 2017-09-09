@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"text/tabwriter"
 
+	"github.com/cryptofiat/contract"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
@@ -93,44 +95,44 @@ var (
 func main() {
 	var stats transactions
 
-	cryptofiatAddress, tx, cryptofiat, err := DeployCryptoFiat(master.tx(0), backend)
+	cryptofiatAddress, tx, cryptofiat, err := contract.DeployCryptoFiat(master.tx(0), backend)
 	stats.add("deploy", "cryptofiat", tx, err)
 	backend.Commit()
 
 	// deploy contracts
-	dataAddress, tx, data, err := DeployData(master.tx(0), backend,
+	dataAddress, tx, data, err := contract.DeployData(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "data", tx, err)
 	backend.Commit()
 	_ = data
 
-	accountsAddress, tx, accounts, err := DeployAccounts(master.tx(0), backend,
+	accountsAddress, tx, accounts, err := contract.DeployAccounts(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "accounts", tx, err)
 	backend.Commit()
 
-	approvingAddress, tx, approving, err := DeployApproving(master.tx(0), backend,
+	approvingAddress, tx, approving, err := contract.DeployApproving(master.tx(0), backend,
 		cryptofiatAddress, accountApprover.Address)
 	stats.add("deploy", "approving", tx, err)
 	backend.Commit()
 
-	reserveAddress, tx, reserve, err := DeployReserve(master.tx(0), backend,
+	reserveAddress, tx, reserve, err := contract.DeployReserve(master.tx(0), backend,
 		cryptofiatAddress, reserveBank.Address)
 	stats.add("deploy", "reserve", tx, err)
 	backend.Commit()
 
-	enforcementAddress, tx, enforcement, err := DeployEnforcement(master.tx(0), backend,
+	enforcementAddress, tx, enforcement, err := contract.DeployEnforcement(master.tx(0), backend,
 		cryptofiatAddress,
 		lawEnforcer.Address, enforcmentAccountDesignator.Address, enforcmentAccount.Address)
 	stats.add("deploy", "enforcement", tx, err)
 	backend.Commit()
 
-	accountRecoveryAddress, tx, accountRecovery, err := DeployAccountRecovery(master.tx(0), backend,
+	accountRecoveryAddress, tx, accountRecovery, err := contract.DeployAccountRecovery(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "account recovery", tx, err)
 	backend.Commit()
 
-	delegationAddress, tx, delegation, err := DeployDelegation(master.tx(0), backend,
+	delegationAddress, tx, delegation, err := contract.DeployDelegation(master.tx(0), backend,
 		cryptofiatAddress)
 	stats.add("deploy", "delegation", tx, err)
 	backend.Commit()
