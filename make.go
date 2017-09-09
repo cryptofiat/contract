@@ -163,6 +163,8 @@ func WriteABI(contracts map[string]*compiler.Contract, folder string) error {
 }
 
 func WriteDetails(contracts map[string]*compiler.Contract, folder string) error {
+	os.MkdirAll(folder, 0755)
+
 	write := func(name, ext string, data string) error {
 		filename := filepath.Join(folder, name) + ext
 		return ioutil.WriteFile(filename, []byte(data), 0600)
