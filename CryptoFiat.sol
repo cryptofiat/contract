@@ -1,4 +1,4 @@
-pragma solidity ^0.4.15;
+pragma solidity ^0.4.24;
 
 contract CryptoFiat {
     address public masterAccount;
@@ -11,22 +11,22 @@ contract CryptoFiat {
     mapping(uint256 => address) public contractAddress;
     mapping(address => uint256) public contractId;
 
-    function contractActive(address addr) constant returns (bool) { return contractId[addr] > 0; }
+    function contractActive(address addr) public constant returns (bool) { return contractId[addr] > 0; }
 
     // list of contracts involved in this CryptoFiat instance
     // use this list of contracts for filtering for events
     address[] public contracts;
-    function contractsLength() constant returns (uint256) { return contracts.length; }
+    function contractsLength() public constant returns (uint256) { return contracts.length; }
 
-    function CryptoFiat() {
+    constructor() public {
         masterAccount = msg.sender;
         contracts.push(address(this));
     }
 
-    function appointMasterAccount(address next) onlyMasterAccount { masterAccount = next; }
+    function appointMasterAccount(address next) public onlyMasterAccount { masterAccount = next; }
 
     event ContractUpgraded(uint256 indexed id, address previous, address next);
-    function upgrade(uint256 id, address next) {
+    function upgrade(uint256 id, address next) public {
         require(id != 0);
         address prev = contractAddress[id];
 
@@ -47,7 +47,7 @@ contract CryptoFiat {
             contractId[next] = id;
 
         // finalize
-        ContractUpgraded(id, prev, next);
+        emit ContractUpgraded(id, prev, next);
         contracts.push(next);
     }
 }
@@ -55,7 +55,7 @@ contract CryptoFiat {
 contract Data {
     CryptoFiat public cryptoFiat;
 
-    function Data(CryptoFiat _cryptoFiat) {
+    constructor(CryptoFiat _cryptoFiat) public {
         cryptoFiat = _cryptoFiat;
     }
 
@@ -67,16 +67,17 @@ contract Data {
     mapping(bytes32 => bytes32) private _data;
 
     function set(uint256 bucket, bytes32 key, bytes32 value)
+        public
         onlyContracts
     {
-        _data[sha3(bucket, key)] = value;
+        _data[keccak256(abi.encodePacked(bucket, key))] = value;
     }
 
     function get(uint256 bucket, bytes32 key)
-        constant
+        public constant
         returns (bytes32)
     {
-        return _data[sha3(bucket, key)];
+        return _data[keccak256(abi.encodePacked(bucket, key))];
     }
 }
 
@@ -121,9 +122,9 @@ contract InternalData is Constants {
         require(CryptoFiat(cryptoFiat).masterAccount() == msg.sender);
         _;
     }
-    function switchCryptoFiat(CryptoFiat next) onlyMasterAccount { cryptoFiat = next; }
-    function switchData(Data next) onlyMasterAccount { data = next; }
-    function cacheData()  internal {
+    function switchCryptoFiat(CryptoFiat next) public onlyMasterAccount { cryptoFiat = next; }
+    function switchData(Data next) public onlyMasterAccount { data = next; }
+    function cacheData() internal {
         data = Data(contractAddress(DATA));
         require(address(data) != 0);
     }
@@ -195,20 +196,21 @@ contract InternalData is Constants {
 }
 
 contract Accounts is InternalData {
-    function Accounts(CryptoFiat _cryptoFiat) {
+    constructor(CryptoFiat _cryptoFiat) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
     }
 
     // balance contains the balance of an account
-    function balanceOf(address addr) constant returns (uint256) { return _balanceOf(addr); }
-    function statusOf(address addr) constant returns (uint256) { return _statusOf(addr); }
+    function balanceOf(address addr) public constant returns (uint256) { return _balanceOf(addr); }
+    function statusOf(address addr)  public constant returns (uint256) { return _statusOf(addr); }
 
-    function isApproved(address account) constant returns (bool) { return _isApproved(account); }
-    function isClosed(address account)   constant returns (bool) { return _isClosed(account); }
-    function isFrozen(address account)   constant returns (bool) { return _isFrozen(account); }
+    function isApproved(address account) public constant returns (bool) { return _isApproved(account); }
+    function isClosed(address account)   public constant returns (bool) { return _isClosed(account); }
+    function isFrozen(address account)   public constant returns (bool) { return _isFrozen(account); }
 
     function transfer(address destination, uint256 amount)
+        public
         canSend(msg.sender)
         canReceive(destination)
     {
@@ -216,13 +218,13 @@ contract Accounts is InternalData {
 
         _withdraw(source, amount);
         _deposit(destination, amount);
-        Transfer(source, destination, amount);
+        emit Transfer(source, destination, amount);
     }
 }
 
 contract Approving is InternalData {
     address public accountApprover;
-    function Approving(CryptoFiat _cryptoFiat, address _accountApprover) {
+    constructor(CryptoFiat _cryptoFiat, address _accountApprover) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
         accountApprover = _accountApprover;
@@ -231,34 +233,34 @@ contract Approving is InternalData {
         require(msg.sender == accountApprover);
         _;
     }
-    function appointAccountApprover(address next) onlyAccountApprover {
+    function appointAccountApprover(address next) public onlyAccountApprover {
         accountApprover = next;
     }
 
     // approveAccount makes it possible for an account to send money
-    function approveAccount(address account) onlyAccountApprover {
+    function approveAccount(address account) public onlyAccountApprover {
         _setStatusOf(account, _statusOf(account) | APPROVED);
-        AccountApproved(account);
+        emit AccountApproved(account);
     }
 
     // approveAccounts approves multiple accounts
-    function approveAccounts(address[] accounts) {
+    function approveAccounts(address[] accounts) public {
         for (uint i = 0; i < accounts.length; i += 1) {
             approveAccount(accounts[i]);
         }
     }
 
     // closeAccount closes the account for receiving money
-    function closeAccount(address account) onlyAccountApprover {
+    function closeAccount(address account) public onlyAccountApprover {
         _setStatusOf(account, _statusOf(account) | CLOSED);
-        AccountClosed(account);
+        emit AccountClosed(account);
     }
 }
 
 
 contract Reserve is InternalData {
     address public reserveBank;
-    function Reserve(CryptoFiat _cryptoFiat, address _reserveBank) {
+    constructor(CryptoFiat _cryptoFiat, address _reserveBank) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
         reserveBank = _reserveBank;
@@ -267,12 +269,13 @@ contract Reserve is InternalData {
         require(msg.sender == reserveBank);
         _;
     }
-    function appointReserveBank(address next) onlyReserveBank { reserveBank = next; }
+    function appointReserveBank(address next) public onlyReserveBank { reserveBank = next; }
 
-    function totalSupply() constant returns (uint256) { return _totalSupply(); }
+    function totalSupply() public constant returns (uint256) { return _totalSupply(); }
 
     // increaseSupply increases the tokens in circulation
     function increaseSupply(uint256 amount)
+        public
         onlyReserveBank
         canReceive(reserveBank)
     {
@@ -282,13 +285,14 @@ contract Reserve is InternalData {
         _setTotalSupply(supply);
 
         _deposit(reserveBank, amount);
-        Transfer(0, reserveBank, amount);
+        emit Transfer(0, reserveBank, amount);
 
-        SupplyChanged(supply);
+        emit SupplyChanged(supply);
     }
 
     // decreaseSupply decreases the amount of tokens in circulation
     function decreaseSupply(uint256 amount)
+        public
         onlyReserveBank
         canSend(reserveBank)
     {
@@ -298,9 +302,9 @@ contract Reserve is InternalData {
         _setTotalSupply(supply);
 
         _withdraw(reserveBank, amount);
-        Transfer(reserveBank, 0, amount);
+        emit Transfer(reserveBank, 0, amount);
 
-        SupplyChanged(supply);
+        emit SupplyChanged(supply);
     }
 }
 
@@ -311,7 +315,7 @@ contract Enforcement is InternalData {
     address public accountDesignator;
     address public account;
 
-    function Enforcement(CryptoFiat _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount) {
+    constructor(CryptoFiat _cryptoFiat, address _lawEnforcer, address _enforcementAccountDesignator, address _enforcementAccount) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
         lawEnforcer = _lawEnforcer;
@@ -328,33 +332,35 @@ contract Enforcement is InternalData {
         _;
     }
 
-    function appointLawEnforcer(address next) onlyLawEnforcer { lawEnforcer = next; }
-    function appointAccountDesignator(address next) onlyAccountDesignator { accountDesignator = next; }
+    function appointLawEnforcer(address next) public onlyLawEnforcer { lawEnforcer = next; }
+    function appointAccountDesignator(address next) public onlyAccountDesignator { accountDesignator = next; }
 
     // withdraw allows law enforcerer to withdraw to a dedicated account
     function withdraw(address from, uint256 amount)
+        public
         onlyLawEnforcer
         canReceive(account)
     {
         _withdraw(from, amount);
         _deposit(account, amount);
-        Transfer(from, account, amount);
+        emit Transfer(from, account, amount);
     }
 
     // freezeAccount disallows account to send money
-    function freezeAccount(address target) onlyLawEnforcer {
+    function freezeAccount(address target) public onlyLawEnforcer {
         _setStatusOf(target, _statusOf(target) | FROZEN);
-        AccountFreeze(target, true);
+        emit AccountFreeze(target, true);
     }
 
     // unfreezeAccount re-allows account to send money
-    function unfreezeAccount(address target) onlyLawEnforcer {
+    function unfreezeAccount(address target) public onlyLawEnforcer {
         _setStatusOf(target, _statusOf(target) & ~FROZEN);
-        AccountFreeze(target, false);
+        emit AccountFreeze(target, false);
     }
 
     // designateAccount allows changing the account
     function designateAccount(address _account)
+        public
         onlyAccountDesignator
         canReceive(_account)
     {
@@ -363,20 +369,21 @@ contract Enforcement is InternalData {
 }
 
 contract AccountRecovery is InternalData {
-    function AccountRecovery(CryptoFiat _cryptoFiat) {
+    constructor(CryptoFiat _cryptoFiat) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
     }
 
     // designateRecoveryAccount allows msg.sender to specify a trusted account
     // that can recover the tokens
-    function designateRecoveryAccount(address recoveryAccount) {
+    function designateRecoveryAccount(address recoveryAccount) public {
         _setRecoveryAccountOf(msg.sender, recoveryAccount);
     }
 
     // recoverBalance allows to recover tokens on a particular account
     // recovering a balance will automatically close the account
     function recoverBalance(address from, address into)
+        public
         canSend(from)
         canReceive(into)
     {
@@ -384,29 +391,29 @@ contract AccountRecovery is InternalData {
 
         // close the account
         _setStatusOf(from, _statusOf(from) | CLOSED);
-        AccountClosed(from);
+        emit AccountClosed(from);
 
         uint256 amount = _balanceOf(from);
 
         _withdraw(from, amount);
         _deposit(into, amount);
 
-        Transfer(from, into, amount);
+        emit Transfer(from, into, amount);
     }
 }
 
 contract Delegation is InternalData {
-    function Delegation(CryptoFiat _cryptoFiat) {
+    constructor(CryptoFiat _cryptoFiat) public {
         cryptoFiat = _cryptoFiat;
         cacheData();
     }
 
-    function nonceOf(address account) constant returns (uint256) {
+    function nonceOf(address account) public constant returns (uint256) {
         return _delegatedTransferNonceOf(account);
     }
 
     function recoverSigner(bytes32 hash, bytes signature)
-        internal
+        internal pure
         returns (address)
     {
         bytes32 r;
@@ -436,12 +443,13 @@ contract Delegation is InternalData {
         // whom to pay for fulfilling transfer
         address delegate
     )
+        public
         canReceive(destination)
         canReceive(delegate)
     {
         // extract source from signature
         address source = recoverSigner(
-            sha3(nonce, destination, amount, fee),
+            keccak256(abi.encodePacked(nonce, destination, amount, fee)),
             signature
         );
 
@@ -456,10 +464,10 @@ contract Delegation is InternalData {
         _withdraw(source, amount + fee);
         _deposit(destination, amount);
 
-        Transfer(source, destination, amount);
+        emit Transfer(source, destination, amount);
         if (fee > 0) {
             _deposit(delegate, fee);
-            Transfer(source, delegate, fee);
+            emit Transfer(source, delegate, fee);
         }
     }
 
@@ -484,7 +492,7 @@ contract Delegation is InternalData {
     }
 
      function recoverXfer(bytes data, uint offset)
-        internal
+        internal pure
         returns (Xfer)
     {
         uint base = XFER_SIZE * offset;
@@ -511,7 +519,7 @@ contract Delegation is InternalData {
             v += 27;
         }
 
-        bytes32 hash = sha3(nonce, destination, amount, fee);
+        bytes32 hash = keccak256(abi.encodePacked(nonce, destination, amount, fee));
 
         Xfer memory xfer;
         xfer.nonce = nonce;
@@ -528,6 +536,7 @@ contract Delegation is InternalData {
         bytes   transfers,
         address delegate
     )
+        public
         canReceive(delegate)
     {
         for (uint i = 0; i < count; i++) {
@@ -544,10 +553,10 @@ contract Delegation is InternalData {
             _withdraw(xfer.source, xfer.amount + xfer.fee);
             _deposit(xfer.destination, xfer.amount);
 
-            Transfer(xfer.source, xfer.destination, xfer.amount);
+            emit Transfer(xfer.source, xfer.destination, xfer.amount);
             if (xfer.fee > 0) {
                 _deposit(delegate, xfer.fee);
-                Transfer(xfer.source, delegate, xfer.fee);
+                emit Transfer(xfer.source, delegate, xfer.fee);
             }
         }
     }

@@ -21,6 +21,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
+const EthEur = 350
+
+func price(gas *big.Int, gwei, ethfiat float64) float64 {
+	return float64(gas.Int64()) * gwei * ethfiat * 1e9 / 1e18
+}
+
 // Accounts
 var (
 	// Master Roles
@@ -390,12 +396,6 @@ func big256(v *big.Int) []byte {
 	off := 32 - len(data)
 	copy(r[off:], data)
 	return r[:]
-}
-
-const EthEur = 250
-
-func price(gas *big.Int, gwei, ethfiat float64) float64 {
-	return float64(gas.Int64()) * gwei * ethfiat * 1e9 / 1e18
 }
 
 type transactions []transaction

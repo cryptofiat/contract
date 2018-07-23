@@ -261,7 +261,6 @@ func compile(solc string, sourcefiles ...string) (map[string]*compiler.Contract,
 
 	args := []string{
 		"--combined-json", "asm,bin,abi,userdoc,devdoc,metadata",
-		"--add-std",                  // include standard lib contracts
 		"--optimize",                 // code optimizer switched on
 		"--optimize-runs", "1000000", // optimize as much as possible
 		"--",
