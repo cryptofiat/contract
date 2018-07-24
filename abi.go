@@ -7,17 +7,19 @@ import (
 	"math/big"
 	"strings"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/event"
 )
 
 // AccountRecoveryABI is the input ABI used to generate the binding from.
 const AccountRecoveryABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"from\",\"type\":\"address\"},{\"name\":\"into\",\"type\":\"address\"}],\"name\":\"recoverBalance\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"recoveryAccount\",\"type\":\"address\"}],\"name\":\"designateRecoveryAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // AccountRecoveryBin is the compiled bytecode used for deploying new contracts.
-const AccountRecoveryBin = `0x608060405234801561001057600080fd5b50604051602080610ae7833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6109ac8061013b6000396000f3006080604052600436106100775763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416632d1c5ff8811461007c5780633363375c146100b2578063516c4b84146100e057806373d4a13a1461011e578063f1375f3814610133578063fb55a05514610161575b600080fd5b34801561008857600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff6004358116906024351661018f565b005b3480156100be57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610322565b3480156100ec57600080fd5b506100f5610451565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561012a57600080fd5b506100f561046d565b34801561013f57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610489565b34801561016d57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610496565b600082600061019d826105c5565b90506001808216146101ae57600080fd5b600481811614156101be57600080fd5b73ffffffffffffffffffffffffffffffffffffffff821615156101e057600080fd5b836101ea81610678565b156101f457600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561021657600080fd5b61021f8661068e565b73ffffffffffffffffffffffffffffffffffffffff16331461024057600080fd5b61025586600261024f896105c5565b1761070c565b60405173ffffffffffffffffffffffffffffffffffffffff8716907fa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de90600090a261029f866107aa565b93506102ab8685610829565b6102b58585610854565b8473ffffffffffffffffffffffffffffffffffffffff168673ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef866040518082815260200191505060405180910390a3505050505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156103be57600080fd5b505af11580156103d2573d6000803e3d6000fd5b505050506040513d60208110156103e857600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461040a57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b610493338261087c565b50565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561053257600080fd5b505af1158015610546573d6000803e3d6000fd5b505050506040513d602081101561055c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461057e57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b505af115801561065a573d6000803e3d6000fd5b505050506040513d602081101561067057600080fd5b505192915050565b6000600280610686846105c5565b161492915050565b600154604080517f295f36d700000000000000000000000000000000000000000000000000000000815260048181015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd5b505af11580156107a2573d6000803e3d6000fd5b505050505050565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b6000610834836107aa565b90508181101561084357600080fd5b61084f838383036108fe565b505050565b600061085f836107aa565b905081810181111561087057600080fd5b61084f838383016108fe565b600154604080517f461b09c000000000000000000000000000000000000000000000000000000000815260048181015273ffffffffffffffffffffffffffffffffffffffff858116602483015284811660448301529151919092169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd00a165627a7a723058200188215b9ff1ee8d796476ad18cd5b823e46677f13aaeb488c532983cc0d65c00029`
+const AccountRecoveryBin = `0x608060405234801561001057600080fd5b50604051602080610ae7833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6109ac8061013b6000396000f3006080604052600436106100775763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416632d1c5ff8811461007c5780633363375c146100b2578063516c4b84146100e057806373d4a13a1461011e578063f1375f3814610133578063fb55a05514610161575b600080fd5b34801561008857600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff6004358116906024351661018f565b005b3480156100be57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610322565b3480156100ec57600080fd5b506100f5610451565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561012a57600080fd5b506100f561046d565b34801561013f57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610489565b34801561016d57600080fd5b506100b073ffffffffffffffffffffffffffffffffffffffff60043516610496565b600082600061019d826105c5565b90506001808216146101ae57600080fd5b600481811614156101be57600080fd5b73ffffffffffffffffffffffffffffffffffffffff821615156101e057600080fd5b836101ea81610678565b156101f457600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561021657600080fd5b61021f8661068e565b73ffffffffffffffffffffffffffffffffffffffff16331461024057600080fd5b61025586600261024f896105c5565b1761070c565b60405173ffffffffffffffffffffffffffffffffffffffff8716907fa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de90600090a261029f866107aa565b93506102ab8685610829565b6102b58585610854565b8473ffffffffffffffffffffffffffffffffffffffff168673ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef866040518082815260200191505060405180910390a3505050505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156103be57600080fd5b505af11580156103d2573d6000803e3d6000fd5b505050506040513d60208110156103e857600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461040a57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b610493338261087c565b50565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561053257600080fd5b505af1158015610546573d6000803e3d6000fd5b505050506040513d602081101561055c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461057e57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b505af115801561065a573d6000803e3d6000fd5b505050506040513d602081101561067057600080fd5b505192915050565b6000600280610686846105c5565b161492915050565b600154604080517f295f36d700000000000000000000000000000000000000000000000000000000815260048181015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd5b505af11580156107a2573d6000803e3d6000fd5b505050505050565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561064657600080fd5b6000610834836107aa565b90508181101561084357600080fd5b61084f838383036108fe565b505050565b600061085f836107aa565b905081810181111561087057600080fd5b61084f838383016108fe565b600154604080517f461b09c000000000000000000000000000000000000000000000000000000000815260048181015273ffffffffffffffffffffffffffffffffffffffff858116602483015284811660448301529151919092169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b15801561078e57600080fd00a165627a7a72305820381541e4bb23c0fe174a2ac90c788cd38da44a13779727e7bac16b0c053bcc4d0029`
 
 // DeployAccountRecovery deploys a new Ethereum contract, binding an instance of AccountRecovery to it.
 func DeployAccountRecovery(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address) (common.Address, *types.Transaction, *AccountRecovery, error) {
@@ -29,13 +31,14 @@ func DeployAccountRecovery(auth *bind.TransactOpts, backend bind.ContractBackend
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &AccountRecovery{AccountRecoveryCaller: AccountRecoveryCaller{contract: contract}, AccountRecoveryTransactor: AccountRecoveryTransactor{contract: contract}}, nil
+	return address, tx, &AccountRecovery{AccountRecoveryCaller: AccountRecoveryCaller{contract: contract}, AccountRecoveryTransactor: AccountRecoveryTransactor{contract: contract}, AccountRecoveryFilterer: AccountRecoveryFilterer{contract: contract}}, nil
 }
 
 // AccountRecovery is an auto generated Go binding around an Ethereum contract.
 type AccountRecovery struct {
 	AccountRecoveryCaller     // Read-only binding to the contract
 	AccountRecoveryTransactor // Write-only binding to the contract
+	AccountRecoveryFilterer   // Log filterer for contract events
 }
 
 // AccountRecoveryCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -45,6 +48,11 @@ type AccountRecoveryCaller struct {
 
 // AccountRecoveryTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type AccountRecoveryTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// AccountRecoveryFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type AccountRecoveryFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -87,16 +95,16 @@ type AccountRecoveryTransactorRaw struct {
 
 // NewAccountRecovery creates a new instance of AccountRecovery, bound to a specific deployed contract.
 func NewAccountRecovery(address common.Address, backend bind.ContractBackend) (*AccountRecovery, error) {
-	contract, err := bindAccountRecovery(address, backend, backend)
+	contract, err := bindAccountRecovery(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &AccountRecovery{AccountRecoveryCaller: AccountRecoveryCaller{contract: contract}, AccountRecoveryTransactor: AccountRecoveryTransactor{contract: contract}}, nil
+	return &AccountRecovery{AccountRecoveryCaller: AccountRecoveryCaller{contract: contract}, AccountRecoveryTransactor: AccountRecoveryTransactor{contract: contract}, AccountRecoveryFilterer: AccountRecoveryFilterer{contract: contract}}, nil
 }
 
 // NewAccountRecoveryCaller creates a new read-only instance of AccountRecovery, bound to a specific deployed contract.
 func NewAccountRecoveryCaller(address common.Address, caller bind.ContractCaller) (*AccountRecoveryCaller, error) {
-	contract, err := bindAccountRecovery(address, caller, nil)
+	contract, err := bindAccountRecovery(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -105,20 +113,29 @@ func NewAccountRecoveryCaller(address common.Address, caller bind.ContractCaller
 
 // NewAccountRecoveryTransactor creates a new write-only instance of AccountRecovery, bound to a specific deployed contract.
 func NewAccountRecoveryTransactor(address common.Address, transactor bind.ContractTransactor) (*AccountRecoveryTransactor, error) {
-	contract, err := bindAccountRecovery(address, nil, transactor)
+	contract, err := bindAccountRecovery(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &AccountRecoveryTransactor{contract: contract}, nil
 }
 
+// NewAccountRecoveryFilterer creates a new log filterer instance of AccountRecovery, bound to a specific deployed contract.
+func NewAccountRecoveryFilterer(address common.Address, filterer bind.ContractFilterer) (*AccountRecoveryFilterer, error) {
+	contract, err := bindAccountRecovery(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoveryFilterer{contract: contract}, nil
+}
+
 // bindAccountRecovery binds a generic wrapper to an already deployed contract.
-func bindAccountRecovery(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindAccountRecovery(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(AccountRecoveryABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -295,11 +312,672 @@ func (_AccountRecovery *AccountRecoveryTransactorSession) SwitchData(next common
 	return _AccountRecovery.Contract.SwitchData(&_AccountRecovery.TransactOpts, next)
 }
 
+// AccountRecoveryAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the AccountRecovery contract.
+type AccountRecoveryAccountApprovedIterator struct {
+	Event *AccountRecoveryAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountRecoveryAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountRecoveryAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountRecoveryAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountRecoveryAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountRecoveryAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountRecoveryAccountApproved represents a AccountApproved event raised by the AccountRecovery contract.
+type AccountRecoveryAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_AccountRecovery *AccountRecoveryFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*AccountRecoveryAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoveryAccountApprovedIterator{contract: _AccountRecovery.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_AccountRecovery *AccountRecoveryFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *AccountRecoveryAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountRecoveryAccountApproved)
+				if err := _AccountRecovery.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountRecoveryAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the AccountRecovery contract.
+type AccountRecoveryAccountClosedIterator struct {
+	Event *AccountRecoveryAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountRecoveryAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountRecoveryAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountRecoveryAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountRecoveryAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountRecoveryAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountRecoveryAccountClosed represents a AccountClosed event raised by the AccountRecovery contract.
+type AccountRecoveryAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_AccountRecovery *AccountRecoveryFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*AccountRecoveryAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoveryAccountClosedIterator{contract: _AccountRecovery.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_AccountRecovery *AccountRecoveryFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *AccountRecoveryAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountRecoveryAccountClosed)
+				if err := _AccountRecovery.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountRecoveryAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the AccountRecovery contract.
+type AccountRecoveryAccountFreezeIterator struct {
+	Event *AccountRecoveryAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountRecoveryAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountRecoveryAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountRecoveryAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountRecoveryAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountRecoveryAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountRecoveryAccountFreeze represents a AccountFreeze event raised by the AccountRecovery contract.
+type AccountRecoveryAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_AccountRecovery *AccountRecoveryFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*AccountRecoveryAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoveryAccountFreezeIterator{contract: _AccountRecovery.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_AccountRecovery *AccountRecoveryFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *AccountRecoveryAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountRecoveryAccountFreeze)
+				if err := _AccountRecovery.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountRecoverySupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the AccountRecovery contract.
+type AccountRecoverySupplyChangedIterator struct {
+	Event *AccountRecoverySupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountRecoverySupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountRecoverySupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountRecoverySupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountRecoverySupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountRecoverySupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountRecoverySupplyChanged represents a SupplyChanged event raised by the AccountRecovery contract.
+type AccountRecoverySupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_AccountRecovery *AccountRecoveryFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*AccountRecoverySupplyChangedIterator, error) {
+
+	logs, sub, err := _AccountRecovery.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoverySupplyChangedIterator{contract: _AccountRecovery.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_AccountRecovery *AccountRecoveryFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *AccountRecoverySupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _AccountRecovery.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountRecoverySupplyChanged)
+				if err := _AccountRecovery.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountRecoveryTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the AccountRecovery contract.
+type AccountRecoveryTransferIterator struct {
+	Event *AccountRecoveryTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountRecoveryTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountRecoveryTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountRecoveryTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountRecoveryTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountRecoveryTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountRecoveryTransfer represents a Transfer event raised by the AccountRecovery contract.
+type AccountRecoveryTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_AccountRecovery *AccountRecoveryFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*AccountRecoveryTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountRecoveryTransferIterator{contract: _AccountRecovery.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_AccountRecovery *AccountRecoveryFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *AccountRecoveryTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _AccountRecovery.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountRecoveryTransfer)
+				if err := _AccountRecovery.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // AccountsABI is the input ABI used to generate the binding from.
 const AccountsABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isApproved\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isClosed\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"addr\",\"type\":\"address\"}],\"name\":\"balanceOf\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"addr\",\"type\":\"address\"}],\"name\":\"statusOf\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"destination\",\"type\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"transfer\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isFrozen\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // AccountsBin is the compiled bytecode used for deploying new contracts.
-const AccountsBin = `0x608060405234801561001057600080fd5b50604051602080610a30833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6108f58061013b6000396000f3006080604052600436106100a35763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416633363375c81146100a8578063516c4b84146100d8578063673448dd146101165780636943b0171461015857806370a082311461018657806373d4a13a146101c657806397a5d5b5146101db578063a9059cbb14610209578063e58398361461023a578063fb55a05514610268575b600080fd5b3480156100b457600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff60043516610296565b005b3480156100e457600080fd5b506100ed6103c5565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561012257600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff600435166103e1565b604080519115158252519081900360200190f35b34801561016457600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff600435166103f2565b34801561019257600080fd5b506101b473ffffffffffffffffffffffffffffffffffffffff600435166103fd565b60408051918252519081900360200190f35b3480156101d257600080fd5b506100ed610408565b3480156101e757600080fd5b506101b473ffffffffffffffffffffffffffffffffffffffff60043516610424565b34801561021557600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff6004351660243561042f565b34801561024657600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff6004351661053a565b34801561027457600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff60043516610545565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561033257600080fd5b505af1158015610346573d6000803e3d6000fd5b505050506040513d602081101561035c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461037e57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60006103ec82610674565b92915050565b60006103ec8261068a565b60006103ec82610698565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60006103ec82610749565b600033600061043d82610749565b905060018082161461044e57600080fd5b6004818116141561045e57600080fd5b73ffffffffffffffffffffffffffffffffffffffff8216151561048057600080fd5b8461048a8161068a565b1561049457600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156104b657600080fd5b3393506104c384866107ca565b6104cd86866107f5565b8573ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef876040518082815260200191505060405180910390a3505050505050565b60006103ec8261081d565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156105e157600080fd5b505af11580156105f5573d6000803e3d6000fd5b505050506040513d602081101561060b57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461062d57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600060018061068284610749565b161492915050565b600060028061068284610749565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561071757600080fd5b505af115801561072b573d6000803e3d6000fd5b505050506040513d602081101561074157600080fd5b505192915050565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561071757600080fd5b60006107d583610698565b9050818110156107e457600080fd5b6107f08383830361082b565b505050565b600061080083610698565b905081810181111561081157600080fd5b6107f08383830161082b565b600060048061068284610749565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b1580156108ad57600080fd5b505af11580156108c1573d6000803e3d6000fd5b5050505050505600a165627a7a72305820a8a2953760b304b29f6a6fa8db54be1e13c3305a8662e705f94396e3a4c1e0cf0029`
+const AccountsBin = `0x608060405234801561001057600080fd5b50604051602080610a30833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6108f58061013b6000396000f3006080604052600436106100a35763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416633363375c81146100a8578063516c4b84146100d8578063673448dd146101165780636943b0171461015857806370a082311461018657806373d4a13a146101c657806397a5d5b5146101db578063a9059cbb14610209578063e58398361461023a578063fb55a05514610268575b600080fd5b3480156100b457600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff60043516610296565b005b3480156100e457600080fd5b506100ed6103c5565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561012257600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff600435166103e1565b604080519115158252519081900360200190f35b34801561016457600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff600435166103f2565b34801561019257600080fd5b506101b473ffffffffffffffffffffffffffffffffffffffff600435166103fd565b60408051918252519081900360200190f35b3480156101d257600080fd5b506100ed610408565b3480156101e757600080fd5b506101b473ffffffffffffffffffffffffffffffffffffffff60043516610424565b34801561021557600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff6004351660243561042f565b34801561024657600080fd5b5061014473ffffffffffffffffffffffffffffffffffffffff6004351661053a565b34801561027457600080fd5b506100d673ffffffffffffffffffffffffffffffffffffffff60043516610545565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561033257600080fd5b505af1158015610346573d6000803e3d6000fd5b505050506040513d602081101561035c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461037e57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60006103ec82610674565b92915050565b60006103ec8261068a565b60006103ec82610698565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60006103ec82610749565b600033600061043d82610749565b905060018082161461044e57600080fd5b6004818116141561045e57600080fd5b73ffffffffffffffffffffffffffffffffffffffff8216151561048057600080fd5b8461048a8161068a565b1561049457600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156104b657600080fd5b3393506104c384866107ca565b6104cd86866107f5565b8573ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef876040518082815260200191505060405180910390a3505050505050565b60006103ec8261081d565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156105e157600080fd5b505af11580156105f5573d6000803e3d6000fd5b505050506040513d602081101561060b57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461062d57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600060018061068284610749565b161492915050565b600060028061068284610749565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b15801561071757600080fd5b505af115801561072b573d6000803e3d6000fd5b505050506040513d602081101561074157600080fd5b505192915050565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561071757600080fd5b60006107d583610698565b9050818110156107e457600080fd5b6107f08383830361082b565b505050565b600061080083610698565b905081810181111561081157600080fd5b6107f08383830161082b565b600060048061068284610749565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b1580156108ad57600080fd5b505af11580156108c1573d6000803e3d6000fd5b5050505050505600a165627a7a7230582005417b4e350de3cdef517d51c923ccf49146bb32c10c42d719dea51ed2bcbbc10029`
 
 // DeployAccounts deploys a new Ethereum contract, binding an instance of Accounts to it.
 func DeployAccounts(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address) (common.Address, *types.Transaction, *Accounts, error) {
@@ -311,13 +989,14 @@ func DeployAccounts(auth *bind.TransactOpts, backend bind.ContractBackend, _cryp
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Accounts{AccountsCaller: AccountsCaller{contract: contract}, AccountsTransactor: AccountsTransactor{contract: contract}}, nil
+	return address, tx, &Accounts{AccountsCaller: AccountsCaller{contract: contract}, AccountsTransactor: AccountsTransactor{contract: contract}, AccountsFilterer: AccountsFilterer{contract: contract}}, nil
 }
 
 // Accounts is an auto generated Go binding around an Ethereum contract.
 type Accounts struct {
 	AccountsCaller     // Read-only binding to the contract
 	AccountsTransactor // Write-only binding to the contract
+	AccountsFilterer   // Log filterer for contract events
 }
 
 // AccountsCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -327,6 +1006,11 @@ type AccountsCaller struct {
 
 // AccountsTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type AccountsTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// AccountsFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type AccountsFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -369,16 +1053,16 @@ type AccountsTransactorRaw struct {
 
 // NewAccounts creates a new instance of Accounts, bound to a specific deployed contract.
 func NewAccounts(address common.Address, backend bind.ContractBackend) (*Accounts, error) {
-	contract, err := bindAccounts(address, backend, backend)
+	contract, err := bindAccounts(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Accounts{AccountsCaller: AccountsCaller{contract: contract}, AccountsTransactor: AccountsTransactor{contract: contract}}, nil
+	return &Accounts{AccountsCaller: AccountsCaller{contract: contract}, AccountsTransactor: AccountsTransactor{contract: contract}, AccountsFilterer: AccountsFilterer{contract: contract}}, nil
 }
 
 // NewAccountsCaller creates a new read-only instance of Accounts, bound to a specific deployed contract.
 func NewAccountsCaller(address common.Address, caller bind.ContractCaller) (*AccountsCaller, error) {
-	contract, err := bindAccounts(address, caller, nil)
+	contract, err := bindAccounts(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -387,20 +1071,29 @@ func NewAccountsCaller(address common.Address, caller bind.ContractCaller) (*Acc
 
 // NewAccountsTransactor creates a new write-only instance of Accounts, bound to a specific deployed contract.
 func NewAccountsTransactor(address common.Address, transactor bind.ContractTransactor) (*AccountsTransactor, error) {
-	contract, err := bindAccounts(address, nil, transactor)
+	contract, err := bindAccounts(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &AccountsTransactor{contract: contract}, nil
 }
 
+// NewAccountsFilterer creates a new log filterer instance of Accounts, bound to a specific deployed contract.
+func NewAccountsFilterer(address common.Address, filterer bind.ContractFilterer) (*AccountsFilterer, error) {
+	contract, err := bindAccounts(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsFilterer{contract: contract}, nil
+}
+
 // bindAccounts binds a generic wrapper to an already deployed contract.
-func bindAccounts(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindAccounts(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(AccountsABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -686,11 +1379,672 @@ func (_Accounts *AccountsTransactorSession) Transfer(destination common.Address,
 	return _Accounts.Contract.Transfer(&_Accounts.TransactOpts, destination, amount)
 }
 
+// AccountsAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the Accounts contract.
+type AccountsAccountApprovedIterator struct {
+	Event *AccountsAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountsAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountsAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountsAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountsAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountsAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountsAccountApproved represents a AccountApproved event raised by the Accounts contract.
+type AccountsAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Accounts *AccountsFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*AccountsAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsAccountApprovedIterator{contract: _Accounts.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Accounts *AccountsFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *AccountsAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountsAccountApproved)
+				if err := _Accounts.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountsAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the Accounts contract.
+type AccountsAccountClosedIterator struct {
+	Event *AccountsAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountsAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountsAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountsAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountsAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountsAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountsAccountClosed represents a AccountClosed event raised by the Accounts contract.
+type AccountsAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Accounts *AccountsFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*AccountsAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsAccountClosedIterator{contract: _Accounts.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Accounts *AccountsFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *AccountsAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountsAccountClosed)
+				if err := _Accounts.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountsAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the Accounts contract.
+type AccountsAccountFreezeIterator struct {
+	Event *AccountsAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountsAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountsAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountsAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountsAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountsAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountsAccountFreeze represents a AccountFreeze event raised by the Accounts contract.
+type AccountsAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Accounts *AccountsFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*AccountsAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsAccountFreezeIterator{contract: _Accounts.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Accounts *AccountsFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *AccountsAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Accounts.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountsAccountFreeze)
+				if err := _Accounts.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountsSupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the Accounts contract.
+type AccountsSupplyChangedIterator struct {
+	Event *AccountsSupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountsSupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountsSupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountsSupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountsSupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountsSupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountsSupplyChanged represents a SupplyChanged event raised by the Accounts contract.
+type AccountsSupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Accounts *AccountsFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*AccountsSupplyChangedIterator, error) {
+
+	logs, sub, err := _Accounts.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsSupplyChangedIterator{contract: _Accounts.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Accounts *AccountsFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *AccountsSupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _Accounts.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountsSupplyChanged)
+				if err := _Accounts.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// AccountsTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the Accounts contract.
+type AccountsTransferIterator struct {
+	Event *AccountsTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *AccountsTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(AccountsTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(AccountsTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *AccountsTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *AccountsTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// AccountsTransfer represents a Transfer event raised by the Accounts contract.
+type AccountsTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Accounts *AccountsFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*AccountsTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Accounts.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountsTransferIterator{contract: _Accounts.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Accounts *AccountsFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *AccountsTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Accounts.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(AccountsTransfer)
+				if err := _Accounts.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // ApprovingABI is the input ABI used to generate the binding from.
 const ApprovingABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"accounts\",\"type\":\"address[]\"}],\"name\":\"approveAccounts\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"accountApprover\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"appointAccountApprover\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"closeAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"approveAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"},{\"name\":\"_accountApprover\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // ApprovingBin is the compiled bytecode used for deploying new contracts.
-const ApprovingBin = `0x608060405234801561001057600080fd5b5060405160408061096a83398101604052805160209091015160008054600160a060020a031916600160a060020a03841617905561005564010000000061007b810204565b60028054600160a060020a031916600160a060020a039290921691909117905550610153565b61008e60016401000000006100ba810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100b857600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561012157600080fd5b505af1158015610135573d6000803e3d6000fd5b505050506040513d602081101561014b57600080fd5b505192915050565b610808806101626000396000f3006080604052600436106100985763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663071a8b53811461009d57806307a385e6146100f45780633363375c14610132578063516c4b841461016057806373d4a13a14610175578063c8b091091461018a578063dd336b94146101b8578063f89f4e77146101e6578063fb55a05514610214575b600080fd5b3480156100a957600080fd5b50604080516020600480358082013583810280860185019096528085526100f2953695939460249493850192918291850190849080828437509497506102429650505050505050565b005b34801561010057600080fd5b5061010961027a565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561013e57600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff60043516610296565b34801561016c57600080fd5b506101096103c5565b34801561018157600080fd5b506101096103e1565b34801561019657600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff600435166103fd565b3480156101c457600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff60043516610468565b3480156101f257600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff600435166104e5565b34801561022057600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff6004351661055c565b60005b81518110156102765761026e828281518110151561025f57fe5b906020019060200201516104e5565b600101610245565b5050565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561033257600080fd5b505af1158015610346573d6000803e3d6000fd5b505050506040513d602081101561035c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461037e57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff16331461042157600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff16331461048c57600080fd5b6104a181600261049b8461068b565b1761073e565b60405173ffffffffffffffffffffffffffffffffffffffff8216907fa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de90600090a250565b60025473ffffffffffffffffffffffffffffffffffffffff16331461050957600080fd5b61051881600161049b8461068b565b60405173ffffffffffffffffffffffffffffffffffffffff8216907fbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee59573090600090a250565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156105f857600080fd5b505af115801561060c573d6000803e3d6000fd5b505050506040513d602081101561062257600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461064457600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561070c57600080fd5b505af1158015610720573d6000803e3d6000fd5b505050506040513d602081101561073657600080fd5b505192915050565b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b1580156107c057600080fd5b505af11580156107d4573d6000803e3d6000fd5b5050505050505600a165627a7a7230582085224779143f6669d52695d45d40cbcebb9f30cc878327219164147116ffcee00029`
+const ApprovingBin = `0x608060405234801561001057600080fd5b5060405160408061096a83398101604052805160209091015160008054600160a060020a031916600160a060020a03841617905561005564010000000061007b810204565b60028054600160a060020a031916600160a060020a039290921691909117905550610153565b61008e60016401000000006100ba810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100b857600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561012157600080fd5b505af1158015610135573d6000803e3d6000fd5b505050506040513d602081101561014b57600080fd5b505192915050565b610808806101626000396000f3006080604052600436106100985763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663071a8b53811461009d57806307a385e6146100f45780633363375c14610132578063516c4b841461016057806373d4a13a14610175578063c8b091091461018a578063dd336b94146101b8578063f89f4e77146101e6578063fb55a05514610214575b600080fd5b3480156100a957600080fd5b50604080516020600480358082013583810280860185019096528085526100f2953695939460249493850192918291850190849080828437509497506102429650505050505050565b005b34801561010057600080fd5b5061010961027a565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561013e57600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff60043516610296565b34801561016c57600080fd5b506101096103c5565b34801561018157600080fd5b506101096103e1565b34801561019657600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff600435166103fd565b3480156101c457600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff60043516610468565b3480156101f257600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff600435166104e5565b34801561022057600080fd5b506100f273ffffffffffffffffffffffffffffffffffffffff6004351661055c565b60005b81518110156102765761026e828281518110151561025f57fe5b906020019060200201516104e5565b600101610245565b5050565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561033257600080fd5b505af1158015610346573d6000803e3d6000fd5b505050506040513d602081101561035c57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461037e57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff16331461042157600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff16331461048c57600080fd5b6104a181600261049b8461068b565b1761073e565b60405173ffffffffffffffffffffffffffffffffffffffff8216907fa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de90600090a250565b60025473ffffffffffffffffffffffffffffffffffffffff16331461050957600080fd5b61051881600161049b8461068b565b60405173ffffffffffffffffffffffffffffffffffffffff8216907fbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee59573090600090a250565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156105f857600080fd5b505af115801561060c573d6000803e3d6000fd5b505050506040513d602081101561062257600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461064457600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b15801561070c57600080fd5b505af1158015610720573d6000803e3d6000fd5b505050506040513d602081101561073657600080fd5b505192915050565b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b1580156107c057600080fd5b505af11580156107d4573d6000803e3d6000fd5b5050505050505600a165627a7a72305820b6e2a4fb0897292d2de7c4153c689b63bfd7861c19adfd9cd94ff3b2107a69570029`
 
 // DeployApproving deploys a new Ethereum contract, binding an instance of Approving to it.
 func DeployApproving(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address, _accountApprover common.Address) (common.Address, *types.Transaction, *Approving, error) {
@@ -702,13 +2056,14 @@ func DeployApproving(auth *bind.TransactOpts, backend bind.ContractBackend, _cry
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Approving{ApprovingCaller: ApprovingCaller{contract: contract}, ApprovingTransactor: ApprovingTransactor{contract: contract}}, nil
+	return address, tx, &Approving{ApprovingCaller: ApprovingCaller{contract: contract}, ApprovingTransactor: ApprovingTransactor{contract: contract}, ApprovingFilterer: ApprovingFilterer{contract: contract}}, nil
 }
 
 // Approving is an auto generated Go binding around an Ethereum contract.
 type Approving struct {
 	ApprovingCaller     // Read-only binding to the contract
 	ApprovingTransactor // Write-only binding to the contract
+	ApprovingFilterer   // Log filterer for contract events
 }
 
 // ApprovingCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -718,6 +2073,11 @@ type ApprovingCaller struct {
 
 // ApprovingTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type ApprovingTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// ApprovingFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type ApprovingFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -760,16 +2120,16 @@ type ApprovingTransactorRaw struct {
 
 // NewApproving creates a new instance of Approving, bound to a specific deployed contract.
 func NewApproving(address common.Address, backend bind.ContractBackend) (*Approving, error) {
-	contract, err := bindApproving(address, backend, backend)
+	contract, err := bindApproving(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Approving{ApprovingCaller: ApprovingCaller{contract: contract}, ApprovingTransactor: ApprovingTransactor{contract: contract}}, nil
+	return &Approving{ApprovingCaller: ApprovingCaller{contract: contract}, ApprovingTransactor: ApprovingTransactor{contract: contract}, ApprovingFilterer: ApprovingFilterer{contract: contract}}, nil
 }
 
 // NewApprovingCaller creates a new read-only instance of Approving, bound to a specific deployed contract.
 func NewApprovingCaller(address common.Address, caller bind.ContractCaller) (*ApprovingCaller, error) {
-	contract, err := bindApproving(address, caller, nil)
+	contract, err := bindApproving(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -778,20 +2138,29 @@ func NewApprovingCaller(address common.Address, caller bind.ContractCaller) (*Ap
 
 // NewApprovingTransactor creates a new write-only instance of Approving, bound to a specific deployed contract.
 func NewApprovingTransactor(address common.Address, transactor bind.ContractTransactor) (*ApprovingTransactor, error) {
-	contract, err := bindApproving(address, nil, transactor)
+	contract, err := bindApproving(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &ApprovingTransactor{contract: contract}, nil
 }
 
+// NewApprovingFilterer creates a new log filterer instance of Approving, bound to a specific deployed contract.
+func NewApprovingFilterer(address common.Address, filterer bind.ContractFilterer) (*ApprovingFilterer, error) {
+	contract, err := bindApproving(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingFilterer{contract: contract}, nil
+}
+
 // bindApproving binds a generic wrapper to an already deployed contract.
-func bindApproving(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindApproving(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(ApprovingABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -1036,11 +2405,672 @@ func (_Approving *ApprovingTransactorSession) SwitchData(next common.Address) (*
 	return _Approving.Contract.SwitchData(&_Approving.TransactOpts, next)
 }
 
+// ApprovingAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the Approving contract.
+type ApprovingAccountApprovedIterator struct {
+	Event *ApprovingAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ApprovingAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ApprovingAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ApprovingAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ApprovingAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ApprovingAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ApprovingAccountApproved represents a AccountApproved event raised by the Approving contract.
+type ApprovingAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Approving *ApprovingFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*ApprovingAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingAccountApprovedIterator{contract: _Approving.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Approving *ApprovingFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *ApprovingAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ApprovingAccountApproved)
+				if err := _Approving.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ApprovingAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the Approving contract.
+type ApprovingAccountClosedIterator struct {
+	Event *ApprovingAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ApprovingAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ApprovingAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ApprovingAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ApprovingAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ApprovingAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ApprovingAccountClosed represents a AccountClosed event raised by the Approving contract.
+type ApprovingAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Approving *ApprovingFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*ApprovingAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingAccountClosedIterator{contract: _Approving.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Approving *ApprovingFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *ApprovingAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ApprovingAccountClosed)
+				if err := _Approving.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ApprovingAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the Approving contract.
+type ApprovingAccountFreezeIterator struct {
+	Event *ApprovingAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ApprovingAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ApprovingAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ApprovingAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ApprovingAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ApprovingAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ApprovingAccountFreeze represents a AccountFreeze event raised by the Approving contract.
+type ApprovingAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Approving *ApprovingFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*ApprovingAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingAccountFreezeIterator{contract: _Approving.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Approving *ApprovingFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *ApprovingAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Approving.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ApprovingAccountFreeze)
+				if err := _Approving.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ApprovingSupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the Approving contract.
+type ApprovingSupplyChangedIterator struct {
+	Event *ApprovingSupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ApprovingSupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ApprovingSupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ApprovingSupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ApprovingSupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ApprovingSupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ApprovingSupplyChanged represents a SupplyChanged event raised by the Approving contract.
+type ApprovingSupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Approving *ApprovingFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*ApprovingSupplyChangedIterator, error) {
+
+	logs, sub, err := _Approving.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingSupplyChangedIterator{contract: _Approving.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Approving *ApprovingFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *ApprovingSupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _Approving.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ApprovingSupplyChanged)
+				if err := _Approving.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ApprovingTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the Approving contract.
+type ApprovingTransferIterator struct {
+	Event *ApprovingTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ApprovingTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ApprovingTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ApprovingTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ApprovingTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ApprovingTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ApprovingTransfer represents a Transfer event raised by the Approving contract.
+type ApprovingTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Approving *ApprovingFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*ApprovingTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Approving.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ApprovingTransferIterator{contract: _Approving.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Approving *ApprovingFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *ApprovingTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Approving.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ApprovingTransfer)
+				if err := _Approving.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // CryptoFiatABI is the input ABI used to generate the binding from.
 const CryptoFiatABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"id\",\"type\":\"uint256\"},{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"upgrade\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"contractAddress\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"contractsLength\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"contracts\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"appointMasterAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"address\"}],\"name\":\"contractId\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"masterAccount\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"addr\",\"type\":\"address\"}],\"name\":\"contractActive\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"id\",\"type\":\"uint256\"},{\"indexed\":false,\"name\":\"previous\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"next\",\"type\":\"address\"}],\"name\":\"ContractUpgraded\",\"type\":\"event\"}]"
 
 // CryptoFiatBin is the compiled bytecode used for deploying new contracts.
-const CryptoFiatBin = `0x608060405234801561001057600080fd5b5060008054600160a060020a0319908116331782556003805460018101825592527fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b9091018054909116301790556105468061006d6000396000f30060806040526004361061008d5763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663028f4e47811461009257806313c01368146100c55780633fad74ad14610106578063474da79a1461012d5780635db4380d14610145578063874c3473146101735780639afd453c146101a1578063e814861e146101b6575b600080fd5b34801561009e57600080fd5b506100c360043573ffffffffffffffffffffffffffffffffffffffff602435166101f8565b005b3480156100d157600080fd5b506100dd6004356103f5565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561011257600080fd5b5061011b61041d565b60408051918252519081900360200190f35b34801561013957600080fd5b506100dd600435610423565b34801561015157600080fd5b506100c373ffffffffffffffffffffffffffffffffffffffff60043516610458565b34801561017f57600080fd5b5061011b73ffffffffffffffffffffffffffffffffffffffff600435166104c3565b3480156101ad57600080fd5b506100dd6104d5565b3480156101c257600080fd5b506101e473ffffffffffffffffffffffffffffffffffffffff600435166104f1565b604080519115158252519081900360200190f35b60008083151561020757600080fd5b60008481526001602052604090205473ffffffffffffffffffffffffffffffffffffffff9081169250831682141561023e57600080fd5b60005473ffffffffffffffffffffffffffffffffffffffff1633148061027957503373ffffffffffffffffffffffffffffffffffffffff8316145b905080151561028757600080fd5b610290836104f1565b1561029a57600080fd5b73ffffffffffffffffffffffffffffffffffffffff82811660009081526002602090815260408083208390558783526001909152902080547fffffffffffffffffffffffff00000000000000000000000000000000000000001691851691821790551561032a5773ffffffffffffffffffffffffffffffffffffffff831660009081526002602052604090208490555b6040805173ffffffffffffffffffffffffffffffffffffffff808516825285166020820152815186927fdc69b57038334451ee12fd1742228917cea7f40dbd33cda5162e7e5754acee1c928290030190a25050600380546001810182556000919091527fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b0180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff9290921691909117905550565b60016020526000908152604090205473ffffffffffffffffffffffffffffffffffffffff1681565b60035490565b600380548290811061043157fe5b60009182526020909120015473ffffffffffffffffffffffffffffffffffffffff16905081565b60005473ffffffffffffffffffffffffffffffffffffffff16331461047c57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60026020526000908152604090205481565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b73ffffffffffffffffffffffffffffffffffffffff1660009081526002602052604081205411905600a165627a7a7230582038bd3cc8ec8ee41f7b2e7468c55293150e27e0c7ab678e5e4162233dbef3f4360029`
+const CryptoFiatBin = `0x608060405234801561001057600080fd5b5060008054600160a060020a0319908116331782556003805460018101825592527fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b9091018054909116301790556105468061006d6000396000f30060806040526004361061008d5763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663028f4e47811461009257806313c01368146100c55780633fad74ad14610106578063474da79a1461012d5780635db4380d14610145578063874c3473146101735780639afd453c146101a1578063e814861e146101b6575b600080fd5b34801561009e57600080fd5b506100c360043573ffffffffffffffffffffffffffffffffffffffff602435166101f8565b005b3480156100d157600080fd5b506100dd6004356103f5565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561011257600080fd5b5061011b61041d565b60408051918252519081900360200190f35b34801561013957600080fd5b506100dd600435610423565b34801561015157600080fd5b506100c373ffffffffffffffffffffffffffffffffffffffff60043516610458565b34801561017f57600080fd5b5061011b73ffffffffffffffffffffffffffffffffffffffff600435166104c3565b3480156101ad57600080fd5b506100dd6104d5565b3480156101c257600080fd5b506101e473ffffffffffffffffffffffffffffffffffffffff600435166104f1565b604080519115158252519081900360200190f35b60008083151561020757600080fd5b60008481526001602052604090205473ffffffffffffffffffffffffffffffffffffffff9081169250831682141561023e57600080fd5b60005473ffffffffffffffffffffffffffffffffffffffff1633148061027957503373ffffffffffffffffffffffffffffffffffffffff8316145b905080151561028757600080fd5b610290836104f1565b1561029a57600080fd5b73ffffffffffffffffffffffffffffffffffffffff82811660009081526002602090815260408083208390558783526001909152902080547fffffffffffffffffffffffff00000000000000000000000000000000000000001691851691821790551561032a5773ffffffffffffffffffffffffffffffffffffffff831660009081526002602052604090208490555b6040805173ffffffffffffffffffffffffffffffffffffffff808516825285166020820152815186927fdc69b57038334451ee12fd1742228917cea7f40dbd33cda5162e7e5754acee1c928290030190a25050600380546001810182556000919091527fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b0180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff9290921691909117905550565b60016020526000908152604090205473ffffffffffffffffffffffffffffffffffffffff1681565b60035490565b600380548290811061043157fe5b60009182526020909120015473ffffffffffffffffffffffffffffffffffffffff16905081565b60005473ffffffffffffffffffffffffffffffffffffffff16331461047c57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60026020526000908152604090205481565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b73ffffffffffffffffffffffffffffffffffffffff1660009081526002602052604081205411905600a165627a7a723058204c59e48de4074be9bfc6152b7ca6b3e0c8ab382dacab1ea111eb460220f40cd80029`
 
 // DeployCryptoFiat deploys a new Ethereum contract, binding an instance of CryptoFiat to it.
 func DeployCryptoFiat(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *CryptoFiat, error) {
@@ -1052,13 +3082,14 @@ func DeployCryptoFiat(auth *bind.TransactOpts, backend bind.ContractBackend) (co
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &CryptoFiat{CryptoFiatCaller: CryptoFiatCaller{contract: contract}, CryptoFiatTransactor: CryptoFiatTransactor{contract: contract}}, nil
+	return address, tx, &CryptoFiat{CryptoFiatCaller: CryptoFiatCaller{contract: contract}, CryptoFiatTransactor: CryptoFiatTransactor{contract: contract}, CryptoFiatFilterer: CryptoFiatFilterer{contract: contract}}, nil
 }
 
 // CryptoFiat is an auto generated Go binding around an Ethereum contract.
 type CryptoFiat struct {
 	CryptoFiatCaller     // Read-only binding to the contract
 	CryptoFiatTransactor // Write-only binding to the contract
+	CryptoFiatFilterer   // Log filterer for contract events
 }
 
 // CryptoFiatCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -1068,6 +3099,11 @@ type CryptoFiatCaller struct {
 
 // CryptoFiatTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type CryptoFiatTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// CryptoFiatFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type CryptoFiatFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -1110,16 +3146,16 @@ type CryptoFiatTransactorRaw struct {
 
 // NewCryptoFiat creates a new instance of CryptoFiat, bound to a specific deployed contract.
 func NewCryptoFiat(address common.Address, backend bind.ContractBackend) (*CryptoFiat, error) {
-	contract, err := bindCryptoFiat(address, backend, backend)
+	contract, err := bindCryptoFiat(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &CryptoFiat{CryptoFiatCaller: CryptoFiatCaller{contract: contract}, CryptoFiatTransactor: CryptoFiatTransactor{contract: contract}}, nil
+	return &CryptoFiat{CryptoFiatCaller: CryptoFiatCaller{contract: contract}, CryptoFiatTransactor: CryptoFiatTransactor{contract: contract}, CryptoFiatFilterer: CryptoFiatFilterer{contract: contract}}, nil
 }
 
 // NewCryptoFiatCaller creates a new read-only instance of CryptoFiat, bound to a specific deployed contract.
 func NewCryptoFiatCaller(address common.Address, caller bind.ContractCaller) (*CryptoFiatCaller, error) {
-	contract, err := bindCryptoFiat(address, caller, nil)
+	contract, err := bindCryptoFiat(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1128,20 +3164,29 @@ func NewCryptoFiatCaller(address common.Address, caller bind.ContractCaller) (*C
 
 // NewCryptoFiatTransactor creates a new write-only instance of CryptoFiat, bound to a specific deployed contract.
 func NewCryptoFiatTransactor(address common.Address, transactor bind.ContractTransactor) (*CryptoFiatTransactor, error) {
-	contract, err := bindCryptoFiat(address, nil, transactor)
+	contract, err := bindCryptoFiat(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &CryptoFiatTransactor{contract: contract}, nil
 }
 
+// NewCryptoFiatFilterer creates a new log filterer instance of CryptoFiat, bound to a specific deployed contract.
+func NewCryptoFiatFilterer(address common.Address, filterer bind.ContractFilterer) (*CryptoFiatFilterer, error) {
+	contract, err := bindCryptoFiat(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &CryptoFiatFilterer{contract: contract}, nil
+}
+
 // bindCryptoFiat binds a generic wrapper to an already deployed contract.
-func bindCryptoFiat(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindCryptoFiat(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(CryptoFiatABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -1380,11 +3425,145 @@ func (_CryptoFiat *CryptoFiatTransactorSession) Upgrade(id *big.Int, next common
 	return _CryptoFiat.Contract.Upgrade(&_CryptoFiat.TransactOpts, id, next)
 }
 
+// CryptoFiatContractUpgradedIterator is returned from FilterContractUpgraded and is used to iterate over the raw logs and unpacked data for ContractUpgraded events raised by the CryptoFiat contract.
+type CryptoFiatContractUpgradedIterator struct {
+	Event *CryptoFiatContractUpgraded // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *CryptoFiatContractUpgradedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(CryptoFiatContractUpgraded)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(CryptoFiatContractUpgraded)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *CryptoFiatContractUpgradedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *CryptoFiatContractUpgradedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// CryptoFiatContractUpgraded represents a ContractUpgraded event raised by the CryptoFiat contract.
+type CryptoFiatContractUpgraded struct {
+	Id       *big.Int
+	Previous common.Address
+	Next     common.Address
+	Raw      types.Log // Blockchain specific contextual infos
+}
+
+// FilterContractUpgraded is a free log retrieval operation binding the contract event 0xdc69b57038334451ee12fd1742228917cea7f40dbd33cda5162e7e5754acee1c.
+//
+// Solidity: e ContractUpgraded(id indexed uint256, previous address, next address)
+func (_CryptoFiat *CryptoFiatFilterer) FilterContractUpgraded(opts *bind.FilterOpts, id []*big.Int) (*CryptoFiatContractUpgradedIterator, error) {
+
+	var idRule []interface{}
+	for _, idItem := range id {
+		idRule = append(idRule, idItem)
+	}
+
+	logs, sub, err := _CryptoFiat.contract.FilterLogs(opts, "ContractUpgraded", idRule)
+	if err != nil {
+		return nil, err
+	}
+	return &CryptoFiatContractUpgradedIterator{contract: _CryptoFiat.contract, event: "ContractUpgraded", logs: logs, sub: sub}, nil
+}
+
+// WatchContractUpgraded is a free log subscription operation binding the contract event 0xdc69b57038334451ee12fd1742228917cea7f40dbd33cda5162e7e5754acee1c.
+//
+// Solidity: e ContractUpgraded(id indexed uint256, previous address, next address)
+func (_CryptoFiat *CryptoFiatFilterer) WatchContractUpgraded(opts *bind.WatchOpts, sink chan<- *CryptoFiatContractUpgraded, id []*big.Int) (event.Subscription, error) {
+
+	var idRule []interface{}
+	for _, idItem := range id {
+		idRule = append(idRule, idItem)
+	}
+
+	logs, sub, err := _CryptoFiat.contract.WatchLogs(opts, "ContractUpgraded", idRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(CryptoFiatContractUpgraded)
+				if err := _CryptoFiat.contract.UnpackLog(event, "ContractUpgraded", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // DataABI is the input ABI used to generate the binding from.
 const DataABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"bucket\",\"type\":\"uint256\"},{\"name\":\"key\",\"type\":\"bytes32\"}],\"name\":\"get\",\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"bucket\",\"type\":\"uint256\"},{\"name\":\"key\",\"type\":\"bytes32\"},{\"name\":\"value\",\"type\":\"bytes32\"}],\"name\":\"set\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"}]"
 
 // DataBin is the compiled bytecode used for deploying new contracts.
-const DataBin = `0x608060405234801561001057600080fd5b506040516020806103d8833981016040525160008054600160a060020a03909216600160a060020a0319909216919091179055610386806100526000396000f3006080604052600436106100565763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663295f36d7811461005b578063461b09c014610088578063516c4b84146100a8575b600080fd5b34801561006757600080fd5b506100766004356024356100e6565b60408051918252519081900360200190f35b34801561009457600080fd5b506100a66004356024356044356101bc565b005b3480156100b457600080fd5b506100bd61033e565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b60408051602080820185905281830184905282518083038401815260609092019283905281516000936001938593909282918401908083835b6020831061015c57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0909201916020918201910161011f565b51815160209384036101000a7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01801990921691161790526040805192909401829003909120865285019590955292909201600020549695505050505050565b60008054604080517fe814861e000000000000000000000000000000000000000000000000000000008152336004820152905173ffffffffffffffffffffffffffffffffffffffff9092169263e814861e926024808401936020939083900390910190829087803b15801561023057600080fd5b505af1158015610244573d6000803e3d6000fd5b505050506040513d602081101561025a57600080fd5b5051151561026757600080fd5b60408051602080820186905281830185905282518083038401815260609092019283905281518493600193600093909282918401908083835b602083106102dd57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe090920191602091820191016102a0565b51815160209384036101000a7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0180199092169116179052604080519290940182900390912086528501959095529290920160002093909355505050505050565b60005473ffffffffffffffffffffffffffffffffffffffff16815600a165627a7a72305820831ad6bd7960b490d17b231075877e71ec8d74a792e3731e6ea67035ff8586900029`
+const DataBin = `0x608060405234801561001057600080fd5b506040516020806103d8833981016040525160008054600160a060020a03909216600160a060020a0319909216919091179055610386806100526000396000f3006080604052600436106100565763ffffffff7c0100000000000000000000000000000000000000000000000000000000600035041663295f36d7811461005b578063461b09c014610088578063516c4b84146100a8575b600080fd5b34801561006757600080fd5b506100766004356024356100e6565b60408051918252519081900360200190f35b34801561009457600080fd5b506100a66004356024356044356101bc565b005b3480156100b457600080fd5b506100bd61033e565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b60408051602080820185905281830184905282518083038401815260609092019283905281516000936001938593909282918401908083835b6020831061015c57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0909201916020918201910161011f565b51815160209384036101000a7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01801990921691161790526040805192909401829003909120865285019590955292909201600020549695505050505050565b60008054604080517fe814861e000000000000000000000000000000000000000000000000000000008152336004820152905173ffffffffffffffffffffffffffffffffffffffff9092169263e814861e926024808401936020939083900390910190829087803b15801561023057600080fd5b505af1158015610244573d6000803e3d6000fd5b505050506040513d602081101561025a57600080fd5b5051151561026757600080fd5b60408051602080820186905281830185905282518083038401815260609092019283905281518493600193600093909282918401908083835b602083106102dd57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe090920191602091820191016102a0565b51815160209384036101000a7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0180199092169116179052604080519290940182900390912086528501959095529290920160002093909355505050505050565b60005473ffffffffffffffffffffffffffffffffffffffff16815600a165627a7a72305820cb3b02c961db8b0bb7da091b3aedbdcb2867687a8147d200440d508d990ebbaa0029`
 
 // DeployData deploys a new Ethereum contract, binding an instance of Data to it.
 func DeployData(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address) (common.Address, *types.Transaction, *Data, error) {
@@ -1396,13 +3575,14 @@ func DeployData(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFi
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Data{DataCaller: DataCaller{contract: contract}, DataTransactor: DataTransactor{contract: contract}}, nil
+	return address, tx, &Data{DataCaller: DataCaller{contract: contract}, DataTransactor: DataTransactor{contract: contract}, DataFilterer: DataFilterer{contract: contract}}, nil
 }
 
 // Data is an auto generated Go binding around an Ethereum contract.
 type Data struct {
 	DataCaller     // Read-only binding to the contract
 	DataTransactor // Write-only binding to the contract
+	DataFilterer   // Log filterer for contract events
 }
 
 // DataCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -1412,6 +3592,11 @@ type DataCaller struct {
 
 // DataTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type DataTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// DataFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type DataFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -1454,16 +3639,16 @@ type DataTransactorRaw struct {
 
 // NewData creates a new instance of Data, bound to a specific deployed contract.
 func NewData(address common.Address, backend bind.ContractBackend) (*Data, error) {
-	contract, err := bindData(address, backend, backend)
+	contract, err := bindData(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Data{DataCaller: DataCaller{contract: contract}, DataTransactor: DataTransactor{contract: contract}}, nil
+	return &Data{DataCaller: DataCaller{contract: contract}, DataTransactor: DataTransactor{contract: contract}, DataFilterer: DataFilterer{contract: contract}}, nil
 }
 
 // NewDataCaller creates a new read-only instance of Data, bound to a specific deployed contract.
 func NewDataCaller(address common.Address, caller bind.ContractCaller) (*DataCaller, error) {
-	contract, err := bindData(address, caller, nil)
+	contract, err := bindData(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1472,20 +3657,29 @@ func NewDataCaller(address common.Address, caller bind.ContractCaller) (*DataCal
 
 // NewDataTransactor creates a new write-only instance of Data, bound to a specific deployed contract.
 func NewDataTransactor(address common.Address, transactor bind.ContractTransactor) (*DataTransactor, error) {
-	contract, err := bindData(address, nil, transactor)
+	contract, err := bindData(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &DataTransactor{contract: contract}, nil
 }
 
+// NewDataFilterer creates a new log filterer instance of Data, bound to a specific deployed contract.
+func NewDataFilterer(address common.Address, filterer bind.ContractFilterer) (*DataFilterer, error) {
+	contract, err := bindData(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &DataFilterer{contract: contract}, nil
+}
+
 // bindData binds a generic wrapper to an already deployed contract.
-func bindData(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindData(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(DataABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -1603,7 +3797,7 @@ func (_Data *DataTransactorSession) Set(bucket *big.Int, key [32]byte, value [32
 const DelegationABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"count\",\"type\":\"uint256\"},{\"name\":\"transfers\",\"type\":\"bytes\"},{\"name\":\"delegate\",\"type\":\"address\"}],\"name\":\"multitransfer\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"nonce\",\"type\":\"uint256\"},{\"name\":\"destination\",\"type\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\"},{\"name\":\"fee\",\"type\":\"uint256\"},{\"name\":\"signature\",\"type\":\"bytes\"},{\"name\":\"delegate\",\"type\":\"address\"}],\"name\":\"transfer\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"account\",\"type\":\"address\"}],\"name\":\"nonceOf\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // DelegationBin is the compiled bytecode used for deploying new contracts.
-const DelegationBin = `0x608060405234801561001057600080fd5b50604051602080611213833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6110d88061013b6000396000f3006080604052600436106100825763ffffffff7c010000000000000000000000000000000000000000000000000000000060003504166305bafaa481146100875780633363375c146100ff578063516c4b841461012d57806373d4a13a1461016b578063e218e6d214610180578063ed2a2d6414610219578063fb55a05514610259575b600080fd5b34801561009357600080fd5b5060408051602060046024803582810135601f81018590048502860185019096528585526100fd9583359536956044949193909101919081908401838280828437509497505050923573ffffffffffffffffffffffffffffffffffffffff16935061028792505050565b005b34801561010b57600080fd5b506100fd73ffffffffffffffffffffffffffffffffffffffff6004351661045d565b34801561013957600080fd5b5061014261058c565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561017757600080fd5b506101426105a8565b34801561018c57600080fd5b50604080516020600460843581810135601f81018490048402850184019095528484526100fd948235946024803573ffffffffffffffffffffffffffffffffffffffff169560443595606435953695919460a49490939101919081908401838280828437509497505050923573ffffffffffffffffffffffffffffffffffffffff1693506105c492505050565b34801561022557600080fd5b5061024773ffffffffffffffffffffffffffffffffffffffff60043516610833565b60408051918252519081900360200190f35b34801561026557600080fd5b506100fd73ffffffffffffffffffffffffffffffffffffffff60043516610844565b6000610291611050565b8261029b81610973565b156102a557600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156102c757600080fd5b600092505b85831015610455576102de8584610989565b91506102ed8260200151610bc8565b6102fa8260400151610c1c565b8151602083015161030a90610c56565b1061031457600080fd5b61032682602001518360000151610d07565b61033e82602001518360800151846060015101610d9d565b61035082604001518360600151610dc3565b816040015173ffffffffffffffffffffffffffffffffffffffff16826020015173ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef84606001516040518082815260200191505060405180910390a360008260800151111561044a576103dc848360800151610dc3565b8373ffffffffffffffffffffffffffffffffffffffff16826020015173ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef84608001516040518082815260200191505060405180910390a35b6001909201916102cc565b505050505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156104f957600080fd5b505af115801561050d573d6000803e3d6000fd5b505050506040513d602081101561052357600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461054557600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b6000856105d081610973565b156105da57600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156105fc57600080fd5b8261060681610973565b1561061057600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561063257600080fd5b6040805160208082018c90526c0100000000000000000000000073ffffffffffffffffffffffffffffffffffffffff8c160282840152605482018a905260748083018a905283518084039091018152609490920192839052815161070b93918291908401908083835b602083106106d857805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0909201916020918201910161069b565b6001836020036101000a038019825116818451168082178552505050505050905001915050604051809103902086610deb565b925061071683610bc8565b8861072084610c56565b1061072a57600080fd5b610734838a610d07565b61074083878901610d9d565b61074a8888610dc3565b8773ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef896040518082815260200191505060405180910390a36000861115610828576107c28487610dc3565b8373ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef886040518082815260200191505060405180910390a35b505050505050505050565b600061083e82610c56565b92915050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156108e057600080fd5b505af11580156108f4573d6000803e3d6000fd5b505050506040513d602081101561090a57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461092c57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600060028061098184610ece565b161492915050565b610991611050565b60008060008060008060008060006109a7611050565b8b60b5029950898d019c5060208d0151985060348d0151975060548d0151965060748d0151955060948d0151945060b48d0151935060ff60b58e0151169250601b8360ff1610156109f957601b830192505b6040805160208082018c90526c0100000000000000000000000073ffffffffffffffffffffffffffffffffffffffff8c160282840152605482018a905260748083018a905283518084039091018152609490920192839052815191929182918401908083835b60208310610a9c57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe09092019160209182019101610a5f565b5181517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff60209485036101000a0190811690199190911617905260408051949092018490039093208e87528151600080825281860180855283905260ff8b1682850152606082018d9052608082018c905292519198506001965060a080820196507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe083019450908290030191865af1158015610b5c573d6000803e3d6000fd5b5050604080517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0015173ffffffffffffffffffffffffffffffffffffffff90811660208501528a1690830152506060810187905260808101869052995050505050505050505092915050565b806000610bd482610ece565b9050600180821614610be557600080fd5b60048181161415610bf557600080fd5b73ffffffffffffffffffffffffffffffffffffffff82161515610c1757600080fd5b505050565b80610c2681610973565b15610c3057600080fd5b73ffffffffffffffffffffffffffffffffffffffff81161515610c5257600080fd5b5050565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526003600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b505af1158015610ce9573d6000803e3d6000fd5b505050506040513d6020811015610cff57600080fd5b505192915050565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526003600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610d8957600080fd5b505af1158015610455573d6000803e3d6000fd5b6000610da883610f4f565b905081811015610db757600080fd5b610c1783838303610fce565b6000610dce83610f4f565b9050818101811115610ddf57600080fd5b610c1783838301610fce565b60008060008084516041141515610e0157600080fd5b50505060208201516040830151604184015160ff16601b811015610e2357601b015b60408051600080825260208083018085528a905260ff8516838501526060830187905260808301869052925160019360a08085019491937fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0840193928390039091019190865af1158015610e9b573d6000803e3d6000fd5b50506040517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe00151979650505050505050565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610d8957600080fd5b60a06040519081016040528060008152602001600073ffffffffffffffffffffffffffffffffffffffff168152602001600073ffffffffffffffffffffffffffffffffffffffff168152602001600081526020016000815250905600a165627a7a723058208df1c8c23e4a032647a53cb610af0d9c7ba3e2433e6499858f341d399d6efca90029`
+const DelegationBin = `0x608060405234801561001057600080fd5b50604051602080611213833981016040525160008054600160a060020a031916600160a060020a03831617905561004e640100000000610054810204565b5061012c565b6100676001640100000000610093810204565b60018054600160a060020a031916600160a060020a03928316179081905516151561009157600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b1580156100fa57600080fd5b505af115801561010e573d6000803e3d6000fd5b505050506040513d602081101561012457600080fd5b505192915050565b6110d88061013b6000396000f3006080604052600436106100825763ffffffff7c010000000000000000000000000000000000000000000000000000000060003504166305bafaa481146100875780633363375c146100ff578063516c4b841461012d57806373d4a13a1461016b578063e218e6d214610180578063ed2a2d6414610219578063fb55a05514610259575b600080fd5b34801561009357600080fd5b5060408051602060046024803582810135601f81018590048502860185019096528585526100fd9583359536956044949193909101919081908401838280828437509497505050923573ffffffffffffffffffffffffffffffffffffffff16935061028792505050565b005b34801561010b57600080fd5b506100fd73ffffffffffffffffffffffffffffffffffffffff6004351661045d565b34801561013957600080fd5b5061014261058c565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561017757600080fd5b506101426105a8565b34801561018c57600080fd5b50604080516020600460843581810135601f81018490048402850184019095528484526100fd948235946024803573ffffffffffffffffffffffffffffffffffffffff169560443595606435953695919460a49490939101919081908401838280828437509497505050923573ffffffffffffffffffffffffffffffffffffffff1693506105c492505050565b34801561022557600080fd5b5061024773ffffffffffffffffffffffffffffffffffffffff60043516610833565b60408051918252519081900360200190f35b34801561026557600080fd5b506100fd73ffffffffffffffffffffffffffffffffffffffff60043516610844565b6000610291611050565b8261029b81610973565b156102a557600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156102c757600080fd5b600092505b85831015610455576102de8584610989565b91506102ed8260200151610bc8565b6102fa8260400151610c1c565b8151602083015161030a90610c56565b1061031457600080fd5b61032682602001518360000151610d07565b61033e82602001518360800151846060015101610d9d565b61035082604001518360600151610dc3565b816040015173ffffffffffffffffffffffffffffffffffffffff16826020015173ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef84606001516040518082815260200191505060405180910390a360008260800151111561044a576103dc848360800151610dc3565b8373ffffffffffffffffffffffffffffffffffffffff16826020015173ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef84608001516040518082815260200191505060405180910390a35b6001909201916102cc565b505050505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156104f957600080fd5b505af115801561050d573d6000803e3d6000fd5b505050506040513d602081101561052357600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461054557600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b6000856105d081610973565b156105da57600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156105fc57600080fd5b8261060681610973565b1561061057600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561063257600080fd5b6040805160208082018c90526c0100000000000000000000000073ffffffffffffffffffffffffffffffffffffffff8c160282840152605482018a905260748083018a905283518084039091018152609490920192839052815161070b93918291908401908083835b602083106106d857805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0909201916020918201910161069b565b6001836020036101000a038019825116818451168082178552505050505050905001915050604051809103902086610deb565b925061071683610bc8565b8861072084610c56565b1061072a57600080fd5b610734838a610d07565b61074083878901610d9d565b61074a8888610dc3565b8773ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef896040518082815260200191505060405180910390a36000861115610828576107c28487610dc3565b8373ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef886040518082815260200191505060405180910390a35b505050505050505050565b600061083e82610c56565b92915050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156108e057600080fd5b505af11580156108f4573d6000803e3d6000fd5b505050506040513d602081101561090a57600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461092c57600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600060028061098184610ece565b161492915050565b610991611050565b60008060008060008060008060006109a7611050565b8b60b5029950898d019c5060208d0151985060348d0151975060548d0151965060748d0151955060948d0151945060b48d0151935060ff60b58e0151169250601b8360ff1610156109f957601b830192505b6040805160208082018c90526c0100000000000000000000000073ffffffffffffffffffffffffffffffffffffffff8c160282840152605482018a905260748083018a905283518084039091018152609490920192839052815191929182918401908083835b60208310610a9c57805182527fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe09092019160209182019101610a5f565b5181517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff60209485036101000a0190811690199190911617905260408051949092018490039093208e87528151600080825281860180855283905260ff8b1682850152606082018d9052608082018c905292519198506001965060a080820196507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe083019450908290030191865af1158015610b5c573d6000803e3d6000fd5b5050604080517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0015173ffffffffffffffffffffffffffffffffffffffff90811660208501528a1690830152506060810187905260808101869052995050505050505050505092915050565b806000610bd482610ece565b9050600180821614610be557600080fd5b60048181161415610bf557600080fd5b73ffffffffffffffffffffffffffffffffffffffff82161515610c1757600080fd5b505050565b80610c2681610973565b15610c3057600080fd5b73ffffffffffffffffffffffffffffffffffffffff81161515610c5257600080fd5b5050565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526003600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b505af1158015610ce9573d6000803e3d6000fd5b505050506040513d6020811015610cff57600080fd5b505192915050565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526003600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610d8957600080fd5b505af1158015610455573d6000803e3d6000fd5b6000610da883610f4f565b905081811015610db757600080fd5b610c1783838303610fce565b6000610dce83610f4f565b9050818101811115610ddf57600080fd5b610c1783838301610fce565b60008060008084516041141515610e0157600080fd5b50505060208201516040830151604184015160ff16601b811015610e2357601b015b60408051600080825260208083018085528a905260ff8516838501526060830187905260808301869052925160019360a08085019491937fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0840193928390039091019190865af1158015610e9b573d6000803e3d6000fd5b50506040517fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe00151979650505050505050565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b158015610cd557600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610d8957600080fd5b60a06040519081016040528060008152602001600073ffffffffffffffffffffffffffffffffffffffff168152602001600073ffffffffffffffffffffffffffffffffffffffff168152602001600081526020016000815250905600a165627a7a7230582023055f359f6cb9cd6933afa6a75f072af8bbf6cccdbb978393a15912563d7a4d0029`
 
 // DeployDelegation deploys a new Ethereum contract, binding an instance of Delegation to it.
 func DeployDelegation(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address) (common.Address, *types.Transaction, *Delegation, error) {
@@ -1615,13 +3809,14 @@ func DeployDelegation(auth *bind.TransactOpts, backend bind.ContractBackend, _cr
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Delegation{DelegationCaller: DelegationCaller{contract: contract}, DelegationTransactor: DelegationTransactor{contract: contract}}, nil
+	return address, tx, &Delegation{DelegationCaller: DelegationCaller{contract: contract}, DelegationTransactor: DelegationTransactor{contract: contract}, DelegationFilterer: DelegationFilterer{contract: contract}}, nil
 }
 
 // Delegation is an auto generated Go binding around an Ethereum contract.
 type Delegation struct {
 	DelegationCaller     // Read-only binding to the contract
 	DelegationTransactor // Write-only binding to the contract
+	DelegationFilterer   // Log filterer for contract events
 }
 
 // DelegationCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -1631,6 +3826,11 @@ type DelegationCaller struct {
 
 // DelegationTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type DelegationTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// DelegationFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type DelegationFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -1673,16 +3873,16 @@ type DelegationTransactorRaw struct {
 
 // NewDelegation creates a new instance of Delegation, bound to a specific deployed contract.
 func NewDelegation(address common.Address, backend bind.ContractBackend) (*Delegation, error) {
-	contract, err := bindDelegation(address, backend, backend)
+	contract, err := bindDelegation(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Delegation{DelegationCaller: DelegationCaller{contract: contract}, DelegationTransactor: DelegationTransactor{contract: contract}}, nil
+	return &Delegation{DelegationCaller: DelegationCaller{contract: contract}, DelegationTransactor: DelegationTransactor{contract: contract}, DelegationFilterer: DelegationFilterer{contract: contract}}, nil
 }
 
 // NewDelegationCaller creates a new read-only instance of Delegation, bound to a specific deployed contract.
 func NewDelegationCaller(address common.Address, caller bind.ContractCaller) (*DelegationCaller, error) {
-	contract, err := bindDelegation(address, caller, nil)
+	contract, err := bindDelegation(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1691,20 +3891,29 @@ func NewDelegationCaller(address common.Address, caller bind.ContractCaller) (*D
 
 // NewDelegationTransactor creates a new write-only instance of Delegation, bound to a specific deployed contract.
 func NewDelegationTransactor(address common.Address, transactor bind.ContractTransactor) (*DelegationTransactor, error) {
-	contract, err := bindDelegation(address, nil, transactor)
+	contract, err := bindDelegation(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &DelegationTransactor{contract: contract}, nil
 }
 
+// NewDelegationFilterer creates a new log filterer instance of Delegation, bound to a specific deployed contract.
+func NewDelegationFilterer(address common.Address, filterer bind.ContractFilterer) (*DelegationFilterer, error) {
+	contract, err := bindDelegation(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationFilterer{contract: contract}, nil
+}
+
 // bindDelegation binds a generic wrapper to an already deployed contract.
-func bindDelegation(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindDelegation(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(DelegationABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -1907,11 +4116,672 @@ func (_Delegation *DelegationTransactorSession) Transfer(nonce *big.Int, destina
 	return _Delegation.Contract.Transfer(&_Delegation.TransactOpts, nonce, destination, amount, fee, signature, delegate)
 }
 
+// DelegationAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the Delegation contract.
+type DelegationAccountApprovedIterator struct {
+	Event *DelegationAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *DelegationAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(DelegationAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(DelegationAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *DelegationAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *DelegationAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// DelegationAccountApproved represents a AccountApproved event raised by the Delegation contract.
+type DelegationAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Delegation *DelegationFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*DelegationAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationAccountApprovedIterator{contract: _Delegation.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Delegation *DelegationFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *DelegationAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(DelegationAccountApproved)
+				if err := _Delegation.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// DelegationAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the Delegation contract.
+type DelegationAccountClosedIterator struct {
+	Event *DelegationAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *DelegationAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(DelegationAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(DelegationAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *DelegationAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *DelegationAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// DelegationAccountClosed represents a AccountClosed event raised by the Delegation contract.
+type DelegationAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Delegation *DelegationFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*DelegationAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationAccountClosedIterator{contract: _Delegation.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Delegation *DelegationFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *DelegationAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(DelegationAccountClosed)
+				if err := _Delegation.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// DelegationAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the Delegation contract.
+type DelegationAccountFreezeIterator struct {
+	Event *DelegationAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *DelegationAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(DelegationAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(DelegationAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *DelegationAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *DelegationAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// DelegationAccountFreeze represents a AccountFreeze event raised by the Delegation contract.
+type DelegationAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Delegation *DelegationFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*DelegationAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationAccountFreezeIterator{contract: _Delegation.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Delegation *DelegationFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *DelegationAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Delegation.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(DelegationAccountFreeze)
+				if err := _Delegation.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// DelegationSupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the Delegation contract.
+type DelegationSupplyChangedIterator struct {
+	Event *DelegationSupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *DelegationSupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(DelegationSupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(DelegationSupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *DelegationSupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *DelegationSupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// DelegationSupplyChanged represents a SupplyChanged event raised by the Delegation contract.
+type DelegationSupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Delegation *DelegationFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*DelegationSupplyChangedIterator, error) {
+
+	logs, sub, err := _Delegation.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationSupplyChangedIterator{contract: _Delegation.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Delegation *DelegationFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *DelegationSupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _Delegation.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(DelegationSupplyChanged)
+				if err := _Delegation.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// DelegationTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the Delegation contract.
+type DelegationTransferIterator struct {
+	Event *DelegationTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *DelegationTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(DelegationTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(DelegationTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *DelegationTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *DelegationTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// DelegationTransfer represents a Transfer event raised by the Delegation contract.
+type DelegationTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Delegation *DelegationFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*DelegationTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Delegation.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &DelegationTransferIterator{contract: _Delegation.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Delegation *DelegationFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *DelegationTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Delegation.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(DelegationTransfer)
+				if err := _Delegation.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // EnforcementABI is the input ABI used to generate the binding from.
 const EnforcementABI = "[{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"account\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"lawEnforcer\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"target\",\"type\":\"address\"}],\"name\":\"unfreezeAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"accountDesignator\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"appointAccountDesignator\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"appointLawEnforcer\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_account\",\"type\":\"address\"}],\"name\":\"designateAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"target\",\"type\":\"address\"}],\"name\":\"freezeAccount\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"from\",\"type\":\"address\"},{\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"withdraw\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"},{\"name\":\"_lawEnforcer\",\"type\":\"address\"},{\"name\":\"_enforcementAccountDesignator\",\"type\":\"address\"},{\"name\":\"_enforcementAccount\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // EnforcementBin is the compiled bytecode used for deploying new contracts.
-const EnforcementBin = `0x608060405234801561001057600080fd5b50604051608080610dce833981016040908152815160208301519183015160609093015160008054600160a060020a031916600160a060020a0384161790559092906100636401000000006100a6810204565b60028054600160a060020a03948516600160a060020a0319918216179091556003805493851693821693909317909255600480549190931691161790555061017e565b6100b960016401000000006100e5810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100e357600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561014c57600080fd5b505af1158015610160573d6000803e3d6000fd5b505050506040513d602081101561017657600080fd5b505192915050565b610c418061018d6000396000f3006080604052600436106100c45763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416633363375c81146100c9578063516c4b84146100f95780635dab24201461013757806372cfc9dc1461014c57806373d4a13a14610161578063788649ea1461017657806385a0f282146101a457806390f28e74146101b9578063b10725e8146101e7578063b9b0330f14610215578063f26c159f14610243578063f3fef3a314610271578063fb55a055146102a2575b600080fd5b3480156100d557600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff600435166102d0565b005b34801561010557600080fd5b5061010e6103ff565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561014357600080fd5b5061010e61041b565b34801561015857600080fd5b5061010e610437565b34801561016d57600080fd5b5061010e610453565b34801561018257600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661046f565b3480156101b057600080fd5b5061010e610517565b3480156101c557600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516610533565b3480156101f357600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661059e565b34801561022157600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516610609565b34801561024f57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff600435166106ab565b34801561027d57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516602435610734565b3480156102ae57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661082b565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561036c57600080fd5b505af1158015610380573d6000803e3d6000fd5b505050506040513d602081101561039657600080fd5b505173ffffffffffffffffffffffffffffffffffffffff16146103b857600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60045473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff16331461049357600080fd5b6104c7817ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb6104c18261095a565b16610a0d565b6040805160008152905173ffffffffffffffffffffffffffffffffffffffff8316917fc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee919081900360200190a250565b60035473ffffffffffffffffffffffffffffffffffffffff1681565b60035473ffffffffffffffffffffffffffffffffffffffff16331461055757600080fd5b600380547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff1633146105c257600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60035473ffffffffffffffffffffffffffffffffffffffff16331461062d57600080fd5b8061063781610aab565b1561064157600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561066357600080fd5b50600480547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff1633146106cf57600080fd5b6106e48160046106de8461095a565b17610a0d565b6040805160018152905173ffffffffffffffffffffffffffffffffffffffff8316917fc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee919081900360200190a250565b60025473ffffffffffffffffffffffffffffffffffffffff16331461075857600080fd5b60045473ffffffffffffffffffffffffffffffffffffffff1661077a81610aab565b1561078457600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156107a657600080fd5b6107b08383610ac1565b6004546107d39073ffffffffffffffffffffffffffffffffffffffff1683610aec565b60045460408051848152905173ffffffffffffffffffffffffffffffffffffffff928316928616917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a3505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156108c757600080fd5b505af11580156108db573d6000803e3d6000fd5b505050506040513d60208110156108f157600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461091357600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b1580156109db57600080fd5b505af11580156109ef573d6000803e3d6000fd5b505050506040513d6020811015610a0557600080fd5b505192915050565b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b158015610a8f57600080fd5b505af1158015610aa3573d6000803e3d6000fd5b505050505050565b6000600280610ab98461095a565b161492915050565b6000610acc83610b14565b905081811015610adb57600080fd5b610ae783838303610b93565b505050565b6000610af783610b14565b9050818101811115610b0857600080fd5b610ae783838301610b93565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b1580156109db57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610a8f57600080fd00a165627a7a72305820a17e0428ce3a8ae44793fc733a66c6af15d663b98a45b15cb96119b2dcac6fba0029`
+const EnforcementBin = `0x608060405234801561001057600080fd5b50604051608080610dce833981016040908152815160208301519183015160609093015160008054600160a060020a031916600160a060020a0384161790559092906100636401000000006100a6810204565b60028054600160a060020a03948516600160a060020a0319918216179091556003805493851693821693909317909255600480549190931691161790555061017e565b6100b960016401000000006100e5810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100e357600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561014c57600080fd5b505af1158015610160573d6000803e3d6000fd5b505050506040513d602081101561017657600080fd5b505192915050565b610c418061018d6000396000f3006080604052600436106100c45763ffffffff7c01000000000000000000000000000000000000000000000000000000006000350416633363375c81146100c9578063516c4b84146100f95780635dab24201461013757806372cfc9dc1461014c57806373d4a13a14610161578063788649ea1461017657806385a0f282146101a457806390f28e74146101b9578063b10725e8146101e7578063b9b0330f14610215578063f26c159f14610243578063f3fef3a314610271578063fb55a055146102a2575b600080fd5b3480156100d557600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff600435166102d0565b005b34801561010557600080fd5b5061010e6103ff565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b34801561014357600080fd5b5061010e61041b565b34801561015857600080fd5b5061010e610437565b34801561016d57600080fd5b5061010e610453565b34801561018257600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661046f565b3480156101b057600080fd5b5061010e610517565b3480156101c557600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516610533565b3480156101f357600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661059e565b34801561022157600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516610609565b34801561024f57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff600435166106ab565b34801561027d57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff60043516602435610734565b3480156102ae57600080fd5b506100f773ffffffffffffffffffffffffffffffffffffffff6004351661082b565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561036c57600080fd5b505af1158015610380573d6000803e3d6000fd5b505050506040513d602081101561039657600080fd5b505173ffffffffffffffffffffffffffffffffffffffff16146103b857600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60045473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025473ffffffffffffffffffffffffffffffffffffffff16331461049357600080fd5b6104c7817ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb6104c18261095a565b16610a0d565b6040805160008152905173ffffffffffffffffffffffffffffffffffffffff8316917fc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee919081900360200190a250565b60035473ffffffffffffffffffffffffffffffffffffffff1681565b60035473ffffffffffffffffffffffffffffffffffffffff16331461055757600080fd5b600380547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff1633146105c257600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60035473ffffffffffffffffffffffffffffffffffffffff16331461062d57600080fd5b8061063781610aab565b1561064157600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561066357600080fd5b50600480547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60025473ffffffffffffffffffffffffffffffffffffffff1633146106cf57600080fd5b6106e48160046106de8461095a565b17610a0d565b6040805160018152905173ffffffffffffffffffffffffffffffffffffffff8316917fc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee919081900360200190a250565b60025473ffffffffffffffffffffffffffffffffffffffff16331461075857600080fd5b60045473ffffffffffffffffffffffffffffffffffffffff1661077a81610aab565b1561078457600080fd5b73ffffffffffffffffffffffffffffffffffffffff811615156107a657600080fd5b6107b08383610ac1565b6004546107d39073ffffffffffffffffffffffffffffffffffffffff1683610aec565b60045460408051848152905173ffffffffffffffffffffffffffffffffffffffff928316928616917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a3505050565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156108c757600080fd5b505af11580156108db573d6000803e3d6000fd5b505050506040513d60208110156108f157600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461091357600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b1580156109db57600080fd5b505af11580156109ef573d6000803e3d6000fd5b505050506040513d6020811015610a0557600080fd5b505192915050565b60018054604080517f461b09c0000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff858116602485015260448401859052905191169163461b09c091606480830192600092919082900301818387803b158015610a8f57600080fd5b505af1158015610aa3573d6000803e3d6000fd5b505050505050565b6000600280610ab98461095a565b161492915050565b6000610acc83610b14565b905081811015610adb57600080fd5b610ae783838303610b93565b505050565b6000610af783610b14565b9050818101811115610b0857600080fd5b610ae783838301610b93565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b1580156109db57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610a8f57600080fd00a165627a7a723058203ed4babed1723d19ef8946429817e52cd43e6c053d9cfbfca7e953a9d18949ed0029`
 
 // DeployEnforcement deploys a new Ethereum contract, binding an instance of Enforcement to it.
 func DeployEnforcement(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address, _lawEnforcer common.Address, _enforcementAccountDesignator common.Address, _enforcementAccount common.Address) (common.Address, *types.Transaction, *Enforcement, error) {
@@ -1923,13 +4793,14 @@ func DeployEnforcement(auth *bind.TransactOpts, backend bind.ContractBackend, _c
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Enforcement{EnforcementCaller: EnforcementCaller{contract: contract}, EnforcementTransactor: EnforcementTransactor{contract: contract}}, nil
+	return address, tx, &Enforcement{EnforcementCaller: EnforcementCaller{contract: contract}, EnforcementTransactor: EnforcementTransactor{contract: contract}, EnforcementFilterer: EnforcementFilterer{contract: contract}}, nil
 }
 
 // Enforcement is an auto generated Go binding around an Ethereum contract.
 type Enforcement struct {
 	EnforcementCaller     // Read-only binding to the contract
 	EnforcementTransactor // Write-only binding to the contract
+	EnforcementFilterer   // Log filterer for contract events
 }
 
 // EnforcementCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -1939,6 +4810,11 @@ type EnforcementCaller struct {
 
 // EnforcementTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type EnforcementTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// EnforcementFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type EnforcementFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -1981,16 +4857,16 @@ type EnforcementTransactorRaw struct {
 
 // NewEnforcement creates a new instance of Enforcement, bound to a specific deployed contract.
 func NewEnforcement(address common.Address, backend bind.ContractBackend) (*Enforcement, error) {
-	contract, err := bindEnforcement(address, backend, backend)
+	contract, err := bindEnforcement(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Enforcement{EnforcementCaller: EnforcementCaller{contract: contract}, EnforcementTransactor: EnforcementTransactor{contract: contract}}, nil
+	return &Enforcement{EnforcementCaller: EnforcementCaller{contract: contract}, EnforcementTransactor: EnforcementTransactor{contract: contract}, EnforcementFilterer: EnforcementFilterer{contract: contract}}, nil
 }
 
 // NewEnforcementCaller creates a new read-only instance of Enforcement, bound to a specific deployed contract.
 func NewEnforcementCaller(address common.Address, caller bind.ContractCaller) (*EnforcementCaller, error) {
-	contract, err := bindEnforcement(address, caller, nil)
+	contract, err := bindEnforcement(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1999,20 +4875,29 @@ func NewEnforcementCaller(address common.Address, caller bind.ContractCaller) (*
 
 // NewEnforcementTransactor creates a new write-only instance of Enforcement, bound to a specific deployed contract.
 func NewEnforcementTransactor(address common.Address, transactor bind.ContractTransactor) (*EnforcementTransactor, error) {
-	contract, err := bindEnforcement(address, nil, transactor)
+	contract, err := bindEnforcement(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &EnforcementTransactor{contract: contract}, nil
 }
 
+// NewEnforcementFilterer creates a new log filterer instance of Enforcement, bound to a specific deployed contract.
+func NewEnforcementFilterer(address common.Address, filterer bind.ContractFilterer) (*EnforcementFilterer, error) {
+	contract, err := bindEnforcement(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementFilterer{contract: contract}, nil
+}
+
 // bindEnforcement binds a generic wrapper to an already deployed contract.
-func bindEnforcement(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindEnforcement(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(EnforcementABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -2351,11 +5236,672 @@ func (_Enforcement *EnforcementTransactorSession) Withdraw(from common.Address, 
 	return _Enforcement.Contract.Withdraw(&_Enforcement.TransactOpts, from, amount)
 }
 
+// EnforcementAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the Enforcement contract.
+type EnforcementAccountApprovedIterator struct {
+	Event *EnforcementAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *EnforcementAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(EnforcementAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(EnforcementAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *EnforcementAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *EnforcementAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// EnforcementAccountApproved represents a AccountApproved event raised by the Enforcement contract.
+type EnforcementAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Enforcement *EnforcementFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*EnforcementAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementAccountApprovedIterator{contract: _Enforcement.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Enforcement *EnforcementFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *EnforcementAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(EnforcementAccountApproved)
+				if err := _Enforcement.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// EnforcementAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the Enforcement contract.
+type EnforcementAccountClosedIterator struct {
+	Event *EnforcementAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *EnforcementAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(EnforcementAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(EnforcementAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *EnforcementAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *EnforcementAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// EnforcementAccountClosed represents a AccountClosed event raised by the Enforcement contract.
+type EnforcementAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Enforcement *EnforcementFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*EnforcementAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementAccountClosedIterator{contract: _Enforcement.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Enforcement *EnforcementFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *EnforcementAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(EnforcementAccountClosed)
+				if err := _Enforcement.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// EnforcementAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the Enforcement contract.
+type EnforcementAccountFreezeIterator struct {
+	Event *EnforcementAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *EnforcementAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(EnforcementAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(EnforcementAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *EnforcementAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *EnforcementAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// EnforcementAccountFreeze represents a AccountFreeze event raised by the Enforcement contract.
+type EnforcementAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Enforcement *EnforcementFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*EnforcementAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementAccountFreezeIterator{contract: _Enforcement.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Enforcement *EnforcementFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *EnforcementAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(EnforcementAccountFreeze)
+				if err := _Enforcement.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// EnforcementSupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the Enforcement contract.
+type EnforcementSupplyChangedIterator struct {
+	Event *EnforcementSupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *EnforcementSupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(EnforcementSupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(EnforcementSupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *EnforcementSupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *EnforcementSupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// EnforcementSupplyChanged represents a SupplyChanged event raised by the Enforcement contract.
+type EnforcementSupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Enforcement *EnforcementFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*EnforcementSupplyChangedIterator, error) {
+
+	logs, sub, err := _Enforcement.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementSupplyChangedIterator{contract: _Enforcement.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Enforcement *EnforcementFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *EnforcementSupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _Enforcement.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(EnforcementSupplyChanged)
+				if err := _Enforcement.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// EnforcementTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the Enforcement contract.
+type EnforcementTransferIterator struct {
+	Event *EnforcementTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *EnforcementTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(EnforcementTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(EnforcementTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *EnforcementTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *EnforcementTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// EnforcementTransfer represents a Transfer event raised by the Enforcement contract.
+type EnforcementTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Enforcement *EnforcementFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*EnforcementTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &EnforcementTransferIterator{contract: _Enforcement.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Enforcement *EnforcementFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *EnforcementTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Enforcement.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(EnforcementTransfer)
+				if err := _Enforcement.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
 // ReserveABI is the input ABI used to generate the binding from.
 const ReserveABI = "[{\"constant\":true,\"inputs\":[],\"name\":\"reserveBank\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"totalSupply\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchData\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"cryptoFiat\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"data\",\"outputs\":[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"decreaseSupply\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"increaseSupply\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"appointReserveBank\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"next\",\"type\":\"address\"}],\"name\":\"switchCryptoFiat\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"name\":\"_cryptoFiat\",\"type\":\"address\"},{\"name\":\"_reserveBank\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"destination\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountApproved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"}],\"name\":\"AccountClosed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"source\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"frozen\",\"type\":\"bool\"}],\"name\":\"AccountFreeze\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"name\":\"totalSupply\",\"type\":\"uint256\"}],\"name\":\"SupplyChanged\",\"type\":\"event\"}]"
 
 // ReserveBin is the compiled bytecode used for deploying new contracts.
-const ReserveBin = `0x608060405234801561001057600080fd5b50604051604080610ccc83398101604052805160209091015160008054600160a060020a031916600160a060020a03841617905561005564010000000061007b810204565b60028054600160a060020a031916600160a060020a039290921691909117905550610153565b61008e60016401000000006100ba810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100b857600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561012157600080fd5b505af1158015610135573d6000803e3d6000fd5b505050506040513d602081101561014b57600080fd5b505192915050565b610b6a806101626000396000f3006080604052600436106100985763ffffffff7c010000000000000000000000000000000000000000000000000000000060003504166302946804811461009d57806318160ddd146100db5780633363375c14610102578063516c4b841461013257806373d4a13a1461014757806398e52f9a1461015c578063b921e16314610174578063ddf05f591461018c578063fb55a055146101ba575b600080fd5b3480156100a957600080fd5b506100b26101e8565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b3480156100e757600080fd5b506100f0610204565b60408051918252519081900360200190f35b34801561010e57600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff60043516610213565b005b34801561013e57600080fd5b506100b2610342565b34801561015357600080fd5b506100b261035e565b34801561016857600080fd5b5061013060043561037a565b34801561018057600080fd5b506101306004356104da565b34801561019857600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff60043516610623565b3480156101c657600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff6004351661068e565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b600061020e6107bd565b905090565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156102af57600080fd5b505af11580156102c3573d6000803e3d6000fd5b505050506040513d60208110156102d957600080fd5b505173ffffffffffffffffffffffffffffffffffffffff16146102fb57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025460009073ffffffffffffffffffffffffffffffffffffffff1633146103a157600080fd5b60025473ffffffffffffffffffffffffffffffffffffffff1660006103c58261086a565b90506001808216146103d657600080fd5b600481811614156103e657600080fd5b73ffffffffffffffffffffffffffffffffffffffff8216151561040857600080fd5b6104106107bd565b92508383101561041f57600080fd5b838303925061042d8361091d565b6002546104509073ffffffffffffffffffffffffffffffffffffffff16856109b8565b60025460408051868152905160009273ffffffffffffffffffffffffffffffffffffffff16917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a36040805184815290517ff71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e99181900360200190a150505050565b60025460009073ffffffffffffffffffffffffffffffffffffffff16331461050157600080fd5b60025473ffffffffffffffffffffffffffffffffffffffff16610523816109e3565b1561052d57600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561054f57600080fd5b610557610204565b915082820182111561056857600080fd5b908201906105758261091d565b6002546105989073ffffffffffffffffffffffffffffffffffffffff16846109f9565b60025460408051858152905173ffffffffffffffffffffffffffffffffffffffff909216916000917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a36040805183815290517ff71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e99181900360200190a1505050565b60025473ffffffffffffffffffffffffffffffffffffffff16331461064757600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561072a57600080fd5b505af115801561073e573d6000803e3d6000fd5b505050506040513d602081101561075457600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461077657600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600154604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600560048201526000602482018190529151919273ffffffffffffffffffffffffffffffffffffffff169163295f36d79160448082019260209290919082900301818787803b15801561083957600080fd5b505af115801561084d573d6000803e3d6000fd5b505050506040513d602081101561086357600080fd5b5051905090565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b1580156108eb57600080fd5b505af11580156108ff573d6000803e3d6000fd5b505050506040513d602081101561091557600080fd5b505192915050565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526005600482015260006024820181905260448201859052915173ffffffffffffffffffffffffffffffffffffffff9093169263461b09c09260648084019391929182900301818387803b15801561099d57600080fd5b505af11580156109b1573d6000803e3d6000fd5b5050505050565b60006109c383610a21565b9050818110156109d257600080fd5b6109de83838303610aa0565b505050565b60006002806109f18461086a565b161492915050565b6000610a0483610a21565b9050818101811115610a1557600080fd5b6109de83838301610aa0565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b1580156108eb57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610b2257600080fd5b505af1158015610b36573d6000803e3d6000fd5b5050505050505600a165627a7a72305820c31c813b4344ce6b585169a838e95f32e023d0b734a4d6f9c10daaba58d10e6b0029`
+const ReserveBin = `0x608060405234801561001057600080fd5b50604051604080610ccc83398101604052805160209091015160008054600160a060020a031916600160a060020a03841617905561005564010000000061007b810204565b60028054600160a060020a031916600160a060020a039290921691909117905550610153565b61008e60016401000000006100ba810204565b60018054600160a060020a031916600160a060020a0392831617908190551615156100b857600080fd5b565b60008054604080517f13c01368000000000000000000000000000000000000000000000000000000008152600481018590529051600160a060020a03909216916313c013689160248082019260209290919082900301818787803b15801561012157600080fd5b505af1158015610135573d6000803e3d6000fd5b505050506040513d602081101561014b57600080fd5b505192915050565b610b6a806101626000396000f3006080604052600436106100985763ffffffff7c010000000000000000000000000000000000000000000000000000000060003504166302946804811461009d57806318160ddd146100db5780633363375c14610102578063516c4b841461013257806373d4a13a1461014757806398e52f9a1461015c578063b921e16314610174578063ddf05f591461018c578063fb55a055146101ba575b600080fd5b3480156100a957600080fd5b506100b26101e8565b6040805173ffffffffffffffffffffffffffffffffffffffff9092168252519081900360200190f35b3480156100e757600080fd5b506100f0610204565b60408051918252519081900360200190f35b34801561010e57600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff60043516610213565b005b34801561013e57600080fd5b506100b2610342565b34801561015357600080fd5b506100b261035e565b34801561016857600080fd5b5061013060043561037a565b34801561018057600080fd5b506101306004356104da565b34801561019857600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff60043516610623565b3480156101c657600080fd5b5061013073ffffffffffffffffffffffffffffffffffffffff6004351661068e565b60025473ffffffffffffffffffffffffffffffffffffffff1681565b600061020e6107bd565b905090565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b1580156102af57600080fd5b505af11580156102c3573d6000803e3d6000fd5b505050506040513d60208110156102d957600080fd5b505173ffffffffffffffffffffffffffffffffffffffff16146102fb57600080fd5b600180547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b60005473ffffffffffffffffffffffffffffffffffffffff1681565b60015473ffffffffffffffffffffffffffffffffffffffff1681565b60025460009073ffffffffffffffffffffffffffffffffffffffff1633146103a157600080fd5b60025473ffffffffffffffffffffffffffffffffffffffff1660006103c58261086a565b90506001808216146103d657600080fd5b600481811614156103e657600080fd5b73ffffffffffffffffffffffffffffffffffffffff8216151561040857600080fd5b6104106107bd565b92508383101561041f57600080fd5b838303925061042d8361091d565b6002546104509073ffffffffffffffffffffffffffffffffffffffff16856109b8565b60025460408051868152905160009273ffffffffffffffffffffffffffffffffffffffff16917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a36040805184815290517ff71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e99181900360200190a150505050565b60025460009073ffffffffffffffffffffffffffffffffffffffff16331461050157600080fd5b60025473ffffffffffffffffffffffffffffffffffffffff16610523816109e3565b1561052d57600080fd5b73ffffffffffffffffffffffffffffffffffffffff8116151561054f57600080fd5b610557610204565b915082820182111561056857600080fd5b908201906105758261091d565b6002546105989073ffffffffffffffffffffffffffffffffffffffff16846109f9565b60025460408051858152905173ffffffffffffffffffffffffffffffffffffffff909216916000917fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef919081900360200190a36040805183815290517ff71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e99181900360200190a1505050565b60025473ffffffffffffffffffffffffffffffffffffffff16331461064757600080fd5b600280547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b3373ffffffffffffffffffffffffffffffffffffffff166000809054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16639afd453c6040518163ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401602060405180830381600087803b15801561072a57600080fd5b505af115801561073e573d6000803e3d6000fd5b505050506040513d602081101561075457600080fd5b505173ffffffffffffffffffffffffffffffffffffffff161461077657600080fd5b600080547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff92909216919091179055565b600154604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600560048201526000602482018190529151919273ffffffffffffffffffffffffffffffffffffffff169163295f36d79160448082019260209290919082900301818787803b15801561083957600080fd5b505af115801561084d573d6000803e3d6000fd5b505050506040513d602081101561086357600080fd5b5051905090565b60018054604080517f295f36d7000000000000000000000000000000000000000000000000000000008152600481019390935273ffffffffffffffffffffffffffffffffffffffff84811660248501529051600093919092169163295f36d79160448082019260209290919082900301818787803b1580156108eb57600080fd5b505af11580156108ff573d6000803e3d6000fd5b505050506040513d602081101561091557600080fd5b505192915050565b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526005600482015260006024820181905260448201859052915173ffffffffffffffffffffffffffffffffffffffff9093169263461b09c09260648084019391929182900301818387803b15801561099d57600080fd5b505af11580156109b1573d6000803e3d6000fd5b5050505050565b60006109c383610a21565b9050818110156109d257600080fd5b6109de83838303610aa0565b505050565b60006002806109f18461086a565b161492915050565b6000610a0483610a21565b9050818101811115610a1557600080fd5b6109de83838301610aa0565b600154604080517f295f36d70000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff84811660248301529151600093929092169163295f36d79160448082019260209290919082900301818787803b1580156108eb57600080fd5b600154604080517f461b09c00000000000000000000000000000000000000000000000000000000081526002600482015273ffffffffffffffffffffffffffffffffffffffff8581166024830152604482018590529151919092169163461b09c091606480830192600092919082900301818387803b158015610b2257600080fd5b505af1158015610b36573d6000803e3d6000fd5b5050505050505600a165627a7a7230582056c2309566d22e4de137d7d3bbb666b5c2f595a1da394a9aae1ad482e568c96d0029`
 
 // DeployReserve deploys a new Ethereum contract, binding an instance of Reserve to it.
 func DeployReserve(auth *bind.TransactOpts, backend bind.ContractBackend, _cryptoFiat common.Address, _reserveBank common.Address) (common.Address, *types.Transaction, *Reserve, error) {
@@ -2367,13 +5913,14 @@ func DeployReserve(auth *bind.TransactOpts, backend bind.ContractBackend, _crypt
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Reserve{ReserveCaller: ReserveCaller{contract: contract}, ReserveTransactor: ReserveTransactor{contract: contract}}, nil
+	return address, tx, &Reserve{ReserveCaller: ReserveCaller{contract: contract}, ReserveTransactor: ReserveTransactor{contract: contract}, ReserveFilterer: ReserveFilterer{contract: contract}}, nil
 }
 
 // Reserve is an auto generated Go binding around an Ethereum contract.
 type Reserve struct {
 	ReserveCaller     // Read-only binding to the contract
 	ReserveTransactor // Write-only binding to the contract
+	ReserveFilterer   // Log filterer for contract events
 }
 
 // ReserveCaller is an auto generated read-only Go binding around an Ethereum contract.
@@ -2383,6 +5930,11 @@ type ReserveCaller struct {
 
 // ReserveTransactor is an auto generated write-only Go binding around an Ethereum contract.
 type ReserveTransactor struct {
+	contract *bind.BoundContract // Generic contract wrapper for the low level calls
+}
+
+// ReserveFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type ReserveFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
@@ -2425,16 +5977,16 @@ type ReserveTransactorRaw struct {
 
 // NewReserve creates a new instance of Reserve, bound to a specific deployed contract.
 func NewReserve(address common.Address, backend bind.ContractBackend) (*Reserve, error) {
-	contract, err := bindReserve(address, backend, backend)
+	contract, err := bindReserve(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Reserve{ReserveCaller: ReserveCaller{contract: contract}, ReserveTransactor: ReserveTransactor{contract: contract}}, nil
+	return &Reserve{ReserveCaller: ReserveCaller{contract: contract}, ReserveTransactor: ReserveTransactor{contract: contract}, ReserveFilterer: ReserveFilterer{contract: contract}}, nil
 }
 
 // NewReserveCaller creates a new read-only instance of Reserve, bound to a specific deployed contract.
 func NewReserveCaller(address common.Address, caller bind.ContractCaller) (*ReserveCaller, error) {
-	contract, err := bindReserve(address, caller, nil)
+	contract, err := bindReserve(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2443,20 +5995,29 @@ func NewReserveCaller(address common.Address, caller bind.ContractCaller) (*Rese
 
 // NewReserveTransactor creates a new write-only instance of Reserve, bound to a specific deployed contract.
 func NewReserveTransactor(address common.Address, transactor bind.ContractTransactor) (*ReserveTransactor, error) {
-	contract, err := bindReserve(address, nil, transactor)
+	contract, err := bindReserve(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &ReserveTransactor{contract: contract}, nil
 }
 
+// NewReserveFilterer creates a new log filterer instance of Reserve, bound to a specific deployed contract.
+func NewReserveFilterer(address common.Address, filterer bind.ContractFilterer) (*ReserveFilterer, error) {
+	contract, err := bindReserve(address, nil, nil, filterer)
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveFilterer{contract: contract}, nil
+}
+
 // bindReserve binds a generic wrapper to an already deployed contract.
-func bindReserve(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor) (*bind.BoundContract, error) {
+func bindReserve(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(ReserveABI))
 	if err != nil {
 		return nil, err
 	}
-	return bind.NewBoundContract(address, parsed, caller, transactor), nil
+	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
@@ -2704,4 +6265,665 @@ func (_Reserve *ReserveSession) SwitchData(next common.Address) (*types.Transact
 // Solidity: function switchData(next address) returns()
 func (_Reserve *ReserveTransactorSession) SwitchData(next common.Address) (*types.Transaction, error) {
 	return _Reserve.Contract.SwitchData(&_Reserve.TransactOpts, next)
+}
+
+// ReserveAccountApprovedIterator is returned from FilterAccountApproved and is used to iterate over the raw logs and unpacked data for AccountApproved events raised by the Reserve contract.
+type ReserveAccountApprovedIterator struct {
+	Event *ReserveAccountApproved // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ReserveAccountApprovedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ReserveAccountApproved)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ReserveAccountApproved)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ReserveAccountApprovedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ReserveAccountApprovedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ReserveAccountApproved represents a AccountApproved event raised by the Reserve contract.
+type ReserveAccountApproved struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountApproved is a free log retrieval operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Reserve *ReserveFilterer) FilterAccountApproved(opts *bind.FilterOpts, source []common.Address) (*ReserveAccountApprovedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.FilterLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveAccountApprovedIterator{contract: _Reserve.contract, event: "AccountApproved", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountApproved is a free log subscription operation binding the contract event 0xbc7abdf8533487db28f8c616affbb4e122d90c5ab8deb258fd21b09cee595730.
+//
+// Solidity: e AccountApproved(source indexed address)
+func (_Reserve *ReserveFilterer) WatchAccountApproved(opts *bind.WatchOpts, sink chan<- *ReserveAccountApproved, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.WatchLogs(opts, "AccountApproved", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ReserveAccountApproved)
+				if err := _Reserve.contract.UnpackLog(event, "AccountApproved", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ReserveAccountClosedIterator is returned from FilterAccountClosed and is used to iterate over the raw logs and unpacked data for AccountClosed events raised by the Reserve contract.
+type ReserveAccountClosedIterator struct {
+	Event *ReserveAccountClosed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ReserveAccountClosedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ReserveAccountClosed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ReserveAccountClosed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ReserveAccountClosedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ReserveAccountClosedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ReserveAccountClosed represents a AccountClosed event raised by the Reserve contract.
+type ReserveAccountClosed struct {
+	Source common.Address
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountClosed is a free log retrieval operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Reserve *ReserveFilterer) FilterAccountClosed(opts *bind.FilterOpts, source []common.Address) (*ReserveAccountClosedIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.FilterLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveAccountClosedIterator{contract: _Reserve.contract, event: "AccountClosed", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountClosed is a free log subscription operation binding the contract event 0xa29911196d428d7968f8bde7515181a391bfa16e26042f789f3f2da7665e25de.
+//
+// Solidity: e AccountClosed(source indexed address)
+func (_Reserve *ReserveFilterer) WatchAccountClosed(opts *bind.WatchOpts, sink chan<- *ReserveAccountClosed, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.WatchLogs(opts, "AccountClosed", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ReserveAccountClosed)
+				if err := _Reserve.contract.UnpackLog(event, "AccountClosed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ReserveAccountFreezeIterator is returned from FilterAccountFreeze and is used to iterate over the raw logs and unpacked data for AccountFreeze events raised by the Reserve contract.
+type ReserveAccountFreezeIterator struct {
+	Event *ReserveAccountFreeze // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ReserveAccountFreezeIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ReserveAccountFreeze)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ReserveAccountFreeze)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ReserveAccountFreezeIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ReserveAccountFreezeIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ReserveAccountFreeze represents a AccountFreeze event raised by the Reserve contract.
+type ReserveAccountFreeze struct {
+	Source common.Address
+	Frozen bool
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterAccountFreeze is a free log retrieval operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Reserve *ReserveFilterer) FilterAccountFreeze(opts *bind.FilterOpts, source []common.Address) (*ReserveAccountFreezeIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.FilterLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveAccountFreezeIterator{contract: _Reserve.contract, event: "AccountFreeze", logs: logs, sub: sub}, nil
+}
+
+// WatchAccountFreeze is a free log subscription operation binding the contract event 0xc0a52010de04a4a5a920bfbaa006102b1014b44a1e1f7315f03903cbcf5318ee.
+//
+// Solidity: e AccountFreeze(source indexed address, frozen bool)
+func (_Reserve *ReserveFilterer) WatchAccountFreeze(opts *bind.WatchOpts, sink chan<- *ReserveAccountFreeze, source []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+
+	logs, sub, err := _Reserve.contract.WatchLogs(opts, "AccountFreeze", sourceRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ReserveAccountFreeze)
+				if err := _Reserve.contract.UnpackLog(event, "AccountFreeze", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ReserveSupplyChangedIterator is returned from FilterSupplyChanged and is used to iterate over the raw logs and unpacked data for SupplyChanged events raised by the Reserve contract.
+type ReserveSupplyChangedIterator struct {
+	Event *ReserveSupplyChanged // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ReserveSupplyChangedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ReserveSupplyChanged)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ReserveSupplyChanged)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ReserveSupplyChangedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ReserveSupplyChangedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ReserveSupplyChanged represents a SupplyChanged event raised by the Reserve contract.
+type ReserveSupplyChanged struct {
+	TotalSupply *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterSupplyChanged is a free log retrieval operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Reserve *ReserveFilterer) FilterSupplyChanged(opts *bind.FilterOpts) (*ReserveSupplyChangedIterator, error) {
+
+	logs, sub, err := _Reserve.contract.FilterLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveSupplyChangedIterator{contract: _Reserve.contract, event: "SupplyChanged", logs: logs, sub: sub}, nil
+}
+
+// WatchSupplyChanged is a free log subscription operation binding the contract event 0xf71f9c3841c0bab7774017ffe585aeab36b5438d148506067901d47c5fa6f7e9.
+//
+// Solidity: e SupplyChanged(totalSupply uint256)
+func (_Reserve *ReserveFilterer) WatchSupplyChanged(opts *bind.WatchOpts, sink chan<- *ReserveSupplyChanged) (event.Subscription, error) {
+
+	logs, sub, err := _Reserve.contract.WatchLogs(opts, "SupplyChanged")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ReserveSupplyChanged)
+				if err := _Reserve.contract.UnpackLog(event, "SupplyChanged", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ReserveTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the Reserve contract.
+type ReserveTransferIterator struct {
+	Event *ReserveTransfer // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ReserveTransferIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ReserveTransfer)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ReserveTransfer)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ReserveTransferIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ReserveTransferIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ReserveTransfer represents a Transfer event raised by the Reserve contract.
+type ReserveTransfer struct {
+	Source      common.Address
+	Destination common.Address
+	Amount      *big.Int
+	Raw         types.Log // Blockchain specific contextual infos
+}
+
+// FilterTransfer is a free log retrieval operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Reserve *ReserveFilterer) FilterTransfer(opts *bind.FilterOpts, source []common.Address, destination []common.Address) (*ReserveTransferIterator, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Reserve.contract.FilterLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return &ReserveTransferIterator{contract: _Reserve.contract, event: "Transfer", logs: logs, sub: sub}, nil
+}
+
+// WatchTransfer is a free log subscription operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: e Transfer(source indexed address, destination indexed address, amount uint256)
+func (_Reserve *ReserveFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<- *ReserveTransfer, source []common.Address, destination []common.Address) (event.Subscription, error) {
+
+	var sourceRule []interface{}
+	for _, sourceItem := range source {
+		sourceRule = append(sourceRule, sourceItem)
+	}
+	var destinationRule []interface{}
+	for _, destinationItem := range destination {
+		destinationRule = append(destinationRule, destinationItem)
+	}
+
+	logs, sub, err := _Reserve.contract.WatchLogs(opts, "Transfer", sourceRule, destinationRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ReserveTransfer)
+				if err := _Reserve.contract.UnpackLog(event, "Transfer", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
 }

@@ -11,12 +11,12 @@ contract CryptoFiat {
     mapping(uint256 => address) public contractAddress;
     mapping(address => uint256) public contractId;
 
-    function contractActive(address addr) public constant returns (bool) { return contractId[addr] > 0; }
+    function contractActive(address addr) public view returns (bool) { return contractId[addr] > 0; }
 
     // list of contracts involved in this CryptoFiat instance
     // use this list of contracts for filtering for events
     address[] public contracts;
-    function contractsLength() public constant returns (uint256) { return contracts.length; }
+    function contractsLength() public view returns (uint256) { return contracts.length; }
 
     constructor() public {
         masterAccount = msg.sender;
@@ -74,7 +74,7 @@ contract Data {
     }
 
     function get(uint256 bucket, bytes32 key)
-        public constant
+        public view
         returns (bytes32)
     {
         return _data[keccak256(abi.encodePacked(bucket, key))];
@@ -119,7 +119,7 @@ contract InternalData is Constants {
     Data       public data;
 
     modifier onlyMasterAccount {
-        require(CryptoFiat(cryptoFiat).masterAccount() == msg.sender);
+        require(cryptoFiat.masterAccount() == msg.sender);
         _;
     }
     function switchCryptoFiat(CryptoFiat next) public onlyMasterAccount { cryptoFiat = next; }
@@ -129,39 +129,41 @@ contract InternalData is Constants {
         require(address(data) != 0);
     }
 
-    function contractAddress(uint256 id) constant internal returns (address) { return CryptoFiat(cryptoFiat).contractAddress(id); }
+    function contractAddress(uint256 id) internal returns (address) {
+        return cryptoFiat.contractAddress(id);
+    }
 
-    function accounts() constant internal returns (Accounts) { return Accounts(contractAddress(ACCOUNTS)); }
-    function approving() constant internal returns (Approving) { return Approving(contractAddress(APPROVING)); }
-    function reserve() constant internal returns (Reserve) { return Reserve(contractAddress(RESERVE)); }
-    function enforcement() constant internal returns (Enforcement) { return Enforcement(contractAddress(ENFORCEMENT)); }
-    function accountRecovery() constant internal returns (AccountRecovery) { return AccountRecovery(contractAddress(ACCOUNT_RECOVERY)); }
-    function delegation() constant internal returns (Delegation) { return Delegation(contractAddress(DELEGATION)); }
+    function accounts() internal view returns (Accounts) { return Accounts(contractAddress(ACCOUNTS)); }
+    function approving() internal view returns (Approving) { return Approving(contractAddress(APPROVING)); }
+    function reserve() internal view returns (Reserve) { return Reserve(contractAddress(RESERVE)); }
+    function enforcement() internal view returns (Enforcement) { return Enforcement(contractAddress(ENFORCEMENT)); }
+    function accountRecovery() internal view returns (AccountRecovery) { return AccountRecovery(contractAddress(ACCOUNT_RECOVERY)); }
+    function delegation() internal view returns (Delegation) { return Delegation(contractAddress(DELEGATION)); }
 
     // balance contains the balance of an account
-    function _balanceOf(address addr) constant internal returns (uint256) { return uint256(data.get(BALANCE, bytes32(addr))); }
+    function _balanceOf(address addr) internal view returns (uint256) { return uint256(data.get(BALANCE, bytes32(addr))); }
     function _setBalanceOf(address addr, uint256 value) internal { data.set(BALANCE, bytes32(addr), bytes32(value)); }
 
     // state contains the current state of an account
-    function _statusOf(address addr) constant internal returns (uint256) { return uint256(data.get(STATUS, bytes32(addr))); }
+    function _statusOf(address addr) internal view returns (uint256) { return uint256(data.get(STATUS, bytes32(addr))); }
     function _setStatusOf(address addr, uint256 value) internal { data.set(STATUS, bytes32(addr), bytes32(value)); }
 
     // delegated trancfer nonce contains the last nonce used in delegatedTransfer
-    function _delegatedTransferNonceOf(address addr) constant internal returns (uint256) { return uint256(data.get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
+    function _delegatedTransferNonceOf(address addr) internal view returns (uint256) { return uint256(data.get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
     function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data.set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
 
     // recovery account contains a fallback account that can be used to recover funds
-    function _recoveryAccountOf(address addr) constant internal returns (address) { return address(data.get(RECOVERY_ACCOUNT, bytes32(addr))); }
+    function _recoveryAccountOf(address addr) internal view returns (address) { return address(data.get(RECOVERY_ACCOUNT, bytes32(addr))); }
     function _setRecoveryAccountOf(address addr, address value) internal { data.set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
 
     // totalSupply is the total amount of tokens in circulation
-    function _totalSupply() constant internal returns (uint256) { return uint256(data.get(TOTAL_SUPPLY, bytes32(0))); }
+    function _totalSupply() internal view returns (uint256) { return uint256(data.get(TOTAL_SUPPLY, bytes32(0))); }
     function _setTotalSupply(uint256 value) internal { data.set(TOTAL_SUPPLY, bytes32(0), bytes32(value)); }
 
     // for checking account status
-    function _isApproved(address account) constant internal returns (bool) { return _statusOf(account) & APPROVED == APPROVED; }
-    function _isClosed(address account)   constant internal returns (bool) { return _statusOf(account) & CLOSED == CLOSED; }
-    function _isFrozen(address account)   constant internal returns (bool) { return _statusOf(account) & FROZEN == FROZEN; }
+    function _isApproved(address account) internal view returns (bool) { return _statusOf(account) & APPROVED == APPROVED; }
+    function _isClosed(address account)   internal view returns (bool) { return _statusOf(account) & CLOSED == CLOSED; }
+    function _isFrozen(address account)   internal view returns (bool) { return _statusOf(account) & FROZEN == FROZEN; }
 
     modifier canSend(address account) {
         uint256 status = _statusOf(account);
@@ -170,14 +172,14 @@ contract InternalData is Constants {
         require(account != 0);
         _;
     }
-    function assertSend(address account) constant internal canSend(account) {}
+    function assertSend(address account) internal view canSend(account) {}
 
     modifier canReceive(address account) {
         require(!_isClosed(account));
         require(account != 0);
         _;
     }
-    function assertReceive(address account) constant internal canReceive(account) {}
+    function assertReceive(address account) internal view canReceive(account) {}
 
     // internal modification of balance
     function _withdraw(address account, uint256 amount) internal {
@@ -202,12 +204,12 @@ contract Accounts is InternalData {
     }
 
     // balance contains the balance of an account
-    function balanceOf(address addr) public constant returns (uint256) { return _balanceOf(addr); }
-    function statusOf(address addr)  public constant returns (uint256) { return _statusOf(addr); }
+    function balanceOf(address addr) public view returns (uint256) { return _balanceOf(addr); }
+    function statusOf(address addr)  public view returns (uint256) { return _statusOf(addr); }
 
-    function isApproved(address account) public constant returns (bool) { return _isApproved(account); }
-    function isClosed(address account)   public constant returns (bool) { return _isClosed(account); }
-    function isFrozen(address account)   public constant returns (bool) { return _isFrozen(account); }
+    function isApproved(address account) public view returns (bool) { return _isApproved(account); }
+    function isClosed(address account)   public view returns (bool) { return _isClosed(account); }
+    function isFrozen(address account)   public view returns (bool) { return _isFrozen(account); }
 
     function transfer(address destination, uint256 amount)
         public
@@ -271,7 +273,7 @@ contract Reserve is InternalData {
     }
     function appointReserveBank(address next) public onlyReserveBank { reserveBank = next; }
 
-    function totalSupply() public constant returns (uint256) { return _totalSupply(); }
+    function totalSupply() public view returns (uint256) { return _totalSupply(); }
 
     // increaseSupply increases the tokens in circulation
     function increaseSupply(uint256 amount)
@@ -408,7 +410,7 @@ contract Delegation is InternalData {
         cacheData();
     }
 
-    function nonceOf(address account) public constant returns (uint256) {
+    function nonceOf(address account) public view returns (uint256) {
         return _delegatedTransferNonceOf(account);
     }
 

@@ -23,8 +23,8 @@ import (
 
 const EthEur = 350
 
-func price(gas *big.Int, gwei, ethfiat float64) float64 {
-	return float64(gas.Int64()) * gwei * ethfiat * 1e9 / 1e18
+func price(gas uint64, gwei, ethfiat float64) float64 {
+	return float64(gas) * gwei * ethfiat * 1e9 / 1e18
 }
 
 // Accounts
@@ -100,7 +100,6 @@ var (
 
 func main() {
 	var stats transactions
-
 	cryptofiatAddress, tx, cryptofiat, err := contract.DeployCryptoFiat(master.tx(0), backend)
 	stats.add("deploy", "cryptofiat", tx, err)
 	backend.Commit()
@@ -323,11 +322,11 @@ func main() {
 
 			used := rcpt.GasUsed
 			usedUpGas := ""
-			if used.Cmp(big.NewInt(4000000)) > 0 {
+			if used >= 4000000 {
 				// when something fails it will use up all the gas which is ~4e6
 				usedUpGas = "gas exhausted"
 			}
-			if rcpt.Failed {
+			if rcpt.Status != types.ReceiptStatusSuccessful {
 				usedUpGas = "failed"
 			}
 
