@@ -43,7 +43,7 @@ contract CryptoFiat {
 
         // activate next contract
         contractAddress[id] = next;
-        if (next != 0)
+        if (next != 0x0000000000000000000000000000000000000000)
             contractId[next] = id;
 
         // finalize
@@ -82,6 +82,8 @@ contract Data {
 }
 
 contract Constants {
+    address constant WORLD = 0x0000000000000000000000000000000000000000;
+
     // contract id
     uint256 constant DATA             = 1;
     uint256 constant ACCOUNTS         = 2;
@@ -126,10 +128,10 @@ contract InternalData is Constants {
     function switchData(Data next) public onlyMasterAccount { data = next; }
     function cacheData() internal {
         data = Data(contractAddress(DATA));
-        require(address(data) != 0);
+        require(address(data) != WORLD);
     }
 
-    function contractAddress(uint256 id) internal returns (address) {
+    function contractAddress(uint256 id) internal view returns (address) {
         return cryptoFiat.contractAddress(id);
     }
 
@@ -141,20 +143,20 @@ contract InternalData is Constants {
     function delegation() internal view returns (Delegation) { return Delegation(contractAddress(DELEGATION)); }
 
     // balance contains the balance of an account
-    function _balanceOf(address addr) internal view returns (uint256) { return uint256(data.get(BALANCE, bytes32(addr))); }
-    function _setBalanceOf(address addr, uint256 value) internal { data.set(BALANCE, bytes32(addr), bytes32(value)); }
+    function _balanceOf(address addr) internal view returns (uint256) { return uint256(data.get(BALANCE, bytes20(addr))); }
+    function _setBalanceOf(address addr, uint256 value) internal { data.set(BALANCE, bytes20(addr), bytes32(value)); }
 
     // state contains the current state of an account
-    function _statusOf(address addr) internal view returns (uint256) { return uint256(data.get(STATUS, bytes32(addr))); }
-    function _setStatusOf(address addr, uint256 value) internal { data.set(STATUS, bytes32(addr), bytes32(value)); }
+    function _statusOf(address addr) internal view returns (uint256) { return uint256(data.get(STATUS, bytes20(addr))); }
+    function _setStatusOf(address addr, uint256 value) internal { data.set(STATUS, bytes20(addr), bytes32(value)); }
 
     // delegated trancfer nonce contains the last nonce used in delegatedTransfer
-    function _delegatedTransferNonceOf(address addr) internal view returns (uint256) { return uint256(data.get(DELEGATED_TRANSFER_NONCE, bytes32(addr))); }
-    function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data.set(DELEGATED_TRANSFER_NONCE, bytes32(addr), bytes32(value)); }
+    function _delegatedTransferNonceOf(address addr) internal view returns (uint256) { return uint256(data.get(DELEGATED_TRANSFER_NONCE, bytes20(addr))); }
+    function _setDelegatedTransferNonceOf(address addr, uint256 value) internal { data.set(DELEGATED_TRANSFER_NONCE, bytes20(addr), bytes32(value)); }
 
     // recovery account contains a fallback account that can be used to recover funds
-    function _recoveryAccountOf(address addr) internal view returns (address) { return address(data.get(RECOVERY_ACCOUNT, bytes32(addr))); }
-    function _setRecoveryAccountOf(address addr, address value) internal { data.set(RECOVERY_ACCOUNT, bytes32(addr), bytes32(value)); }
+    function _recoveryAccountOf(address addr) internal view returns (address) { return address(bytes20(data.get(RECOVERY_ACCOUNT, bytes20(addr)))); }
+    function _setRecoveryAccountOf(address addr, address value) internal { data.set(RECOVERY_ACCOUNT, bytes20(addr), bytes20(value)); }
 
     // totalSupply is the total amount of tokens in circulation
     function _totalSupply() internal view returns (uint256) { return uint256(data.get(TOTAL_SUPPLY, bytes32(0))); }
@@ -169,14 +171,14 @@ contract InternalData is Constants {
         uint256 status = _statusOf(account);
         require(status & APPROVED == APPROVED);
         require(status & FROZEN   != FROZEN);
-        require(account != 0);
+        require(account != WORLD);
         _;
     }
     function assertSend(address account) internal view canSend(account) {}
 
     modifier canReceive(address account) {
         require(!_isClosed(account));
-        require(account != 0);
+        require(account != WORLD);
         _;
     }
     function assertReceive(address account) internal view canReceive(account) {}
@@ -287,7 +289,7 @@ contract Reserve is InternalData {
         _setTotalSupply(supply);
 
         _deposit(reserveBank, amount);
-        emit Transfer(0, reserveBank, amount);
+        emit Transfer(WORLD, reserveBank, amount);
 
         emit SupplyChanged(supply);
     }
@@ -304,7 +306,7 @@ contract Reserve is InternalData {
         _setTotalSupply(supply);
 
         _withdraw(reserveBank, amount);
-        emit Transfer(reserveBank, 0, amount);
+        emit Transfer(reserveBank, WORLD, amount);
 
         emit SupplyChanged(supply);
     }
