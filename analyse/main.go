@@ -4,8 +4,12 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math/big"
+	"net/http"
 	"os"
 	"strconv"
 	"text/tabwriter"
@@ -21,10 +25,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/sha3"
 )
 
-const EthEur = 350
+const DefaultEthEur = 236
 
-func price(gas uint64, gwei, ethfiat float64) float64 {
-	return float64(gas) * gwei * ethfiat * 1e9 / 1e18
+var DefaultPrices = GasPrices{
+	SafeLow:  2,
+	Standard: 2.8,
+	Fast:     5,
+	Fastest:  20,
 }
 
 // Accounts
@@ -303,7 +310,11 @@ func main() {
 		w.Init(os.Stdout, 4, 8, 4, ' ', 0)
 		defer w.Flush()
 
-		fmt.Fprintf(w, "Category\tTransaction\tGasUsed\t1gwei\t5gwei\t20gwei\t40gwei\tError\n")
+		prices := getGasPrices()
+		ethToEur := getEthEurPrice()
+		fmt.Printf("Prices: %#v\n", prices)
+
+		fmt.Fprintf(w, "Category\tTransaction\tGasUsed\t%vgwei\t%vgwei\t%vgwei\t%vgwei\tError\n", prices.SafeLow, prices.Standard, prices.Fast, prices.Fastest)
 		prevcat := ""
 		for _, transaction := range stats {
 			category := transaction.category
@@ -332,7 +343,11 @@ func main() {
 
 			fmt.Fprintf(w, "%v\t%v\t%v\t%0.2f€\t%0.2f€\t%0.2f€\t%0.2f€\t%v\n",
 				category, transaction.name,
-				used, price(used, 1, EthEur), price(used, 5, EthEur), price(used, 20, EthEur), price(used, 40, EthEur),
+				used,
+				price(used, prices.SafeLow, ethToEur),
+				price(used, prices.Standard, ethToEur),
+				price(used, prices.Fast, ethToEur),
+				price(used, prices.Fastest, ethToEur),
 				usedUpGas)
 		}
 	}
@@ -440,11 +455,68 @@ func newBackend(initialBalance *big.Int, accounts ...*account) *backends.Simulat
 			Balance: initialBalance,
 		}
 	}
-	return backends.NewSimulatedBackend(alloc)
+	return backends.NewSimulatedBackend(alloc, 40<<20)
 }
 
 func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+type GasPrices struct {
+	SafeLow  float64
+	Standard float64
+	Fast     float64
+	Fastest  float64
+}
+
+func getGasPrices() GasPrices {
+	r, err := http.Get("https://www.etherchain.org/api/gasPriceOracle")
+	if err != nil {
+		fmt.Println("unable to retrieve gas prices, using defaults", err)
+		return DefaultPrices
+	}
+	defer r.Body.Close()
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil && err != io.EOF {
+		fmt.Println("unable to retrieve gas prices, using defaults", err)
+		return DefaultPrices
+	}
+
+	var prices struct {
+		SafeLow  string `json:"safelow"`
+		Standard string `json:"standard"`
+		Fast     string `json:"fast"`
+		Fastest  string `json:"fastest"`
+	}
+
+	err = json.Unmarshal(data, &prices)
+	if err != nil {
+		fmt.Println("unable to retrieve gas prices, using defaults", err)
+		return DefaultPrices
+	}
+	return GasPrices{
+		SafeLow:  parseFloat(prices.SafeLow, DefaultPrices.SafeLow),
+		Standard: parseFloat(prices.Standard, DefaultPrices.Standard),
+		Fast:     parseFloat(prices.Fast, DefaultPrices.Fast),
+		Fastest:  parseFloat(prices.Fastest, DefaultPrices.Fastest),
+	}
+}
+
+func price(gas uint64, gwei, ethfiat float64) float64 {
+	return float64(gas) * gwei * ethfiat * 1e9 / 1e18
+}
+
+func getEthEurPrice() float64 {
+	return DefaultEthEur
+}
+
+func parseFloat(s string, def float64) float64 {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return def
+	}
+	return v
 }
