@@ -91,6 +91,12 @@ func main() {
 		fmt.Printf("write details: %v\n", err)
 		os.Exit(-1)
 	}
+
+	err = GenerateWeb3J(contracts, "java")
+	if err != nil {
+		fmt.Printf("generate java abi: %v\n", err)
+		os.Exit(-1)
+	}
 }
 
 func WriteBind(contracts map[string]*compiler.Contract, pkg, file string, lang bind.Lang) error {
@@ -183,6 +189,26 @@ func WriteDetails(contracts map[string]*compiler.Contract, folder string) error 
 		}
 
 		if err := write(name, ".evm", Assembly[name].String()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GenerateWeb3J(contracts map[string]*compiler.Contract, folder string) error {
+	os.MkdirAll(folder, 0755)
+
+	for _, name := range ContractOrder {
+		cmd := exec.Command("web3j",
+			"solidity", "generate",
+			"--javaTypes",
+			filepath.Join(".bin", name+".bin"),
+			filepath.Join(".bin", name+".abi"),
+			"-o", folder,
+			"-p", "eu.cryptoeuro.contract",
+		)
+		if err := cmd.Run(); err != nil {
+			fmt.Println("uanble to write abi for", name, ":", err)
 			return err
 		}
 	}
